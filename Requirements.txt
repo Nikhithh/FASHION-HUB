@@ -1,0 +1,17 @@
+FashionHub MERN Project Requirements
+
+ Backend Dependencies
+express 
+mongoose 
+bcryptjs
+ jsonwebtoken
+ dotenv
+cors cookie-parser multer helmet morgan express-validator nodemon
+
+
+ Frontend Dependencies
+ react 
+react-dom
+ react-router-dom
+ axios
+tailwindcss @tailwindcss/vite react-icons react-hook-form react-toastify
