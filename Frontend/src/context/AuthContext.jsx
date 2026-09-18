@@ -40,8 +40,9 @@ export const AuthProvider = ({ children }) => {
       if (res.data && res.data.success) {
         localStorage.setItem('token', res.data.token);
         setUser(res.data.user);
-        return { success: true };
+        return { success: true, user: res.data.user };
       }
+      return { success: false, error: res.data?.message || 'Login failed. Check your credentials.' };
     } catch (err) {
       console.error(err);
       return {
@@ -62,6 +63,7 @@ export const AuthProvider = ({ children }) => {
         setUser(res.data.user);
         return { success: true };
       }
+      return { success: false, error: res.data?.message || 'Registration failed.' };
     } catch (err) {
       console.error(err);
       return {
@@ -86,8 +88,32 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const registerSeller = async (formData) => {
+    // Combined seller + brand application (multipart/form-data including
+    // the verification document). No token is stored — a pending seller
+    // must wait for admin approval before logging in.
+    setLoading(true);
+    try {
+      const res = await api.post('/auth/register-seller', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      if (res.data && res.data.success) {
+        return { success: true, message: res.data.message, user: res.data.user, brand: res.data.brand };
+      }
+      return { success: false, error: res.data?.message || 'Seller application failed.' };
+    } catch (err) {
+      console.error(err);
+      return {
+        success: false,
+        error: err.response?.data?.message || 'Seller application failed.',
+      };
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, setUser, loading, login, register, registerSeller, logout }}>
       {children}
     </AuthContext.Provider>
   );

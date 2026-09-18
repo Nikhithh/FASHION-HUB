@@ -3,9 +3,21 @@ import { Link } from 'react-router-dom';
 import api from '../services/api';
 import { FiTrendingUp, FiShoppingBag, FiTruck, FiShield, FiRotateCcw } from 'react-icons/fi';
 
+import usePageMeta from '../hooks/usePageMeta';
+import ProductCard from '../components/Product/ProductCard';
+import Button from '../components/UI/Button';
+import Input from '../components/UI/Input';
+import { ProductGridSkeleton } from '../components/UI/Loader';
+import { toast } from 'react-toastify';
+
 const Home = () => {
+  usePageMeta({
+    title: 'FashionHub — Multi-Brand Fashion Marketplace',
+    description: 'FashionHub — multi-brand fashion marketplace. Shop clothing, footwear and accessories from verified brands.',
+  });
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [email, setEmail] = useState('');
 
   useEffect(() => {
     const fetchLatest = async () => {
@@ -51,11 +63,8 @@ const Home = () => {
             Discover the latest trends in apparel, shoes, and luxury accessories curated from leading designer brands.
           </p>
           <div className="pt-4 flex flex-wrap gap-4">
-            <Link
-              to="/shop"
-              className="px-8 py-3.5 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl font-semibold shadow-lg hover:shadow-purple-500/20 transform hover:-translate-y-0.5 transition-all duration-300"
-            >
-              Explore Shop
+            <Link to="/shop">
+              <Button size="lg">Explore Shop</Button>
             </Link>
           </div>
         </div>
@@ -119,44 +128,13 @@ const Home = () => {
         </div>
 
         {loading ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 px-4">
-            {[1, 2, 3, 4].map((n) => (
-              <div key={n} className="animate-pulse bg-gray-200 dark:bg-gray-800 h-80 rounded-2xl"></div>
-            ))}
-          </div>
+          <ProductGridSkeleton count={4} gridClassName="grid grid-cols-2 md:grid-cols-4 gap-6 px-4" />
         ) : products.length === 0 ? (
           <p className="text-gray-500 py-8">No products found. Please seed the database.</p>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 px-4">
             {products.map((prod) => (
-              <Link
-                key={prod._id}
-                to={`/product/${prod._id}`}
-                className="group flex flex-col bg-white dark:bg-[#1f2028] border border-gray-150 dark:border-gray-800 rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 text-left"
-              >
-                <div className="aspect-[4/5] overflow-hidden relative bg-gray-100">
-                  <img
-                    src={prod.images?.[0] || 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=600'}
-                    alt={prod.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                  {prod.stock === 0 && (
-                    <span className="absolute top-2 right-2 bg-red-600 text-white text-xxs font-bold uppercase px-2 py-1 rounded">Out Of Stock</span>
-                  )}
-                </div>
-                <div className="p-4 space-y-2 flex-grow flex flex-col justify-between">
-                  <div>
-                    <span className="text-purple-600 dark:text-purple-400 font-medium text-xs tracking-wider uppercase">{prod.brand}</span>
-                    <h3 className="font-semibold text-gray-800 dark:text-gray-200 text-sm mt-1 line-clamp-1 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
-                      {prod.name}
-                    </h3>
-                  </div>
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="text-gray-900 dark:text-white font-extrabold text-base">${prod.price.toFixed(2)}</span>
-                    <span className="text-gray-400 text-xs">{prod.category}</span>
-                  </div>
-                </div>
-              </Link>
+              <ProductCard key={prod._id} product={prod} />
             ))}
           </div>
         )}
@@ -170,19 +148,27 @@ const Home = () => {
             Get an instant 20% discount on your first order. Plus, enjoy premium access to new collections, exclusive drops, and free styling recommendations.
           </p>
         </div>
-        <div className="flex-shrink-0 flex gap-2 w-full md:w-auto">
-          <input
+        <form
+          className="flex-shrink-0 flex gap-2 w-full md:w-auto items-start"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!email.trim()) return;
+            toast.success('Welcome to the Fashion Club! Check your inbox for 20% off.');
+            setEmail('');
+          }}
+        >
+          <Input
             type="email"
             placeholder="Your email address"
-            className="w-full md:w-64 px-4 py-3 bg-white dark:bg-[#1f2028] text-gray-900 rounded-xl border-none focus:ring-2 focus:ring-purple-500 focus:outline-none"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full md:w-64"
+            inputClassName="border-none text-gray-900"
           />
-          <button
-            type="button"
-            className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-xl transition-all shadow-md"
-          >
+          <Button type="submit">
             Subscribe
-          </button>
-        </div>
+          </Button>
+        </form>
       </section>
     </div>
   );

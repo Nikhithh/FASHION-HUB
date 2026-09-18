@@ -1,9 +1,16 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
+import { formatVariant } from '../utils/variants';
+import { resolveImageUrl, FALLBACK_IMAGE } from '../utils/imageUrl';
 import { FiTrash2, FiShoppingBag, FiChevronRight } from 'react-icons/fi';
+import usePageMeta from '../hooks/usePageMeta';
 
 const Cart = () => {
+  usePageMeta({
+    title: 'Shopping Bag | FashionHub',
+    description: 'Review items in your FashionHub shopping bag before checkout.',
+  });
   const { cartItems, cartTotal, updateCartItem, removeFromCart, loading } = useCart();
 
   if (loading && cartItems.length === 0) {
@@ -50,7 +57,7 @@ const Cart = () => {
               {/* Product Thumbnail */}
               <div className="w-20 h-24 sm:w-24 sm:h-28 overflow-hidden rounded-xl bg-gray-150 flex-shrink-0">
                 <img
-                  src={item.product?.images?.[0] || 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=600'}
+                  src={resolveImageUrl(item.product?.images?.[0]) || FALLBACK_IMAGE}
                   alt={item.product?.name}
                   className="w-full h-full object-cover"
                 />
@@ -64,7 +71,10 @@ const Cart = () => {
                       {item.product?.name || 'Loading item name...'}
                     </Link>
                   </h3>
-                  <p className="text-xs text-gray-400">Unit Price: ${item.price.toFixed(2)}</p>
+                  <p className="text-xs text-gray-400">Unit Price: ${Number(item.price || 0).toFixed(2)}</p>
+                  {formatVariant(item) && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">{formatVariant(item)}</p>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between sm:justify-start gap-6">
@@ -89,7 +99,7 @@ const Cart = () => {
 
                   {/* Total price & remove button */}
                   <div className="flex items-center gap-4">
-                    <span className="font-extrabold text-gray-900 dark:text-white text-base">${(item.price * item.quantity).toFixed(2)}</span>
+                    <span className="font-extrabold text-gray-900 dark:text-white text-base">${(Number(item.price || 0) * item.quantity).toFixed(2)}</span>
                     <button
                       type="button"
                       onClick={() => removeFromCart(item._id)}
@@ -111,7 +121,7 @@ const Cart = () => {
           <div className="space-y-3 text-sm pb-4 border-b border-gray-100 dark:border-gray-800">
             <div className="flex justify-between">
               <span className="text-gray-500">Subtotal</span>
-              <span className="font-semibold text-gray-850 dark:text-white">${cartTotal.toFixed(2)}</span>
+              <span className="font-semibold text-gray-850 dark:text-white">${Number(cartTotal || 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Estimated Shipping</span>
@@ -121,7 +131,7 @@ const Cart = () => {
 
           <div className="flex justify-between items-end text-lg font-bold">
             <span className="text-gray-850 dark:text-white">Total</span>
-            <span className="text-purple-600 dark:text-purple-400 font-black">${cartTotal.toFixed(2)}</span>
+            <span className="text-purple-600 dark:text-purple-400 font-black">${Number(cartTotal || 0).toFixed(2)}</span>
           </div>
 
           <Link

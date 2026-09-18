@@ -29,7 +29,10 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 // Base Route for status check
-app.use('/uploads', express.static('uploads')); // Serve uploaded assets static
+// Public product images only. Brand verification documents live under
+// uploads/brand-documents and are NEVER served statically — they are
+// streamed through authorized endpoints (owner seller or admin).
+app.use('/uploads/products', express.static('uploads/products')); // Serve product images static
 
 // Mount Api Routes
 const authRoutes = require('./routes/authRoutes');
@@ -46,6 +49,16 @@ const orderRoutes = require('./routes/orderRoutes');
 app.use('/api/orders', orderRoutes);
 const reviewRoutes = require('./routes/reviewRoutes');
 app.use('/api/reviews', reviewRoutes);
+const adminRoutes = require('./routes/adminRoutes');
+app.use('/api/admin', adminRoutes);
+const paymentRoutes = require('./routes/paymentRoutes');
+app.use('/api/payments', paymentRoutes);
+const userRoutes = require('./routes/userRoutes');
+app.use('/api/users', userRoutes);
+const wishlistRoutes = require('./routes/wishlistRoutes');
+app.use('/api/wishlist', wishlistRoutes);
+const recommendationRoutes = require('./routes/recommendationRoutes');
+app.use('/api/recommendations', recommendationRoutes);
 app.get('/', (req, res) => {
   res.status(200).json({
     success: true,

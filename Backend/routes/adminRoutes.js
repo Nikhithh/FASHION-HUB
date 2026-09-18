@@ -29,6 +29,12 @@ const {
   getPendingBrands,
   approveBrand,
   rejectBrand,
+  getBrandVerificationDocument,
+  createBrand,
+  getBrands,
+  getBrand,
+  updateBrand,
+  deleteBrand,
   // Categories
   createCategory,
   getCategories,
@@ -62,10 +68,12 @@ router.delete('/users/:id', protect, authorize('admin'), userIdParam, validate, 
 
 // Brand Management
 router.get('/brands/pending', protect, authorize('admin'), getPendingBrands);
-router.put('/brands/:id/approve', protect, authorize('admin'), brandIdParam, approveBrand);
-router.put('/brands/:id/reject', protect, authorize('admin'), brandIdParam, rejectBrand);
+router.put('/brands/:id/approve', protect, authorize('admin'), brandIdParam, validate, approveBrand);
+router.put('/brands/:id/reject', protect, authorize('admin'), brandIdParam, validate, rejectBrand);
+router.get('/brands/:id/verification-document', protect, authorize('admin'), brandIdParam, validate, getBrandVerificationDocument);
 
 router.get('/brands', protect, authorize('admin'), getBrands);
+router.post('/brands', protect, authorize('admin'), createBrandRules, validate, createBrand);
 router.get('/brands/:id', protect, authorize('admin'), brandIdParam, validate, getBrand);
 router.put('/brands/:id', protect, authorize('admin'), brandIdParam, updateBrandRules, validate, updateBrand);
 router.delete('/brands/:id', protect, authorize('admin'), brandIdParam, validate, deleteBrand);

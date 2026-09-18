@@ -1,7 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { toast } from 'react-toastify';
 
 const Footer = () => {
+  const [email, setEmail] = useState('');
+
+  const handleSubscribe = (e) => {
+    e.preventDefault();
+    if (!email.trim()) return;
+    toast.success('Thanks for subscribing to FashionHub updates!');
+    setEmail('');
+  };
   return (
     <footer className="bg-gray-550 dark:bg-[#101115] border-t border-gray-200 dark:border-gray-800 text-gray-500 dark:text-gray-400 mt-auto">
       <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
@@ -44,15 +53,17 @@ const Footer = () => {
             <p className="mt-4 text-sm">
               Subscribe to get special offers, free giveaways, and once-in-a-lifetime deals.
             </p>
-            <form className="mt-4 flex max-w-md">
+            <form className="mt-4 flex max-w-md" onSubmit={handleSubscribe}>
               <input
                 type="email"
                 required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 placeholder="Enter email"
                 className="w-full min-w-0 px-4 py-2 text-base text-gray-900 bg-white dark:bg-[#1f2028] border border-gray-300 dark:border-gray-800 rounded-l-xl focus:outline-none focus:ring-1 focus:ring-purple-500"
               />
               <button
-                type="button"
+                type="submit"
                 className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-r-xl font-medium transition-all shadow-md"
               >
                 Join

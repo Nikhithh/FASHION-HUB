@@ -3,26 +3,26 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const Cart = require('../models/Cart');
 
-/** Helper: calculate price, subtotal, total */
+/** Helper: calculate price, subtotal, total (carries selected size/color through) */
 const calculateItems = async (items) => {
   const detailed = [];
   let total = 0;
-  for (const { product, quantity } of items) {
+  for (const { product, quantity, size, color } of items) {
     const prod = await Product.findById(product);
     if (!prod) {
       const err = new Error(`Product ${product} not found`);
-      err.status = 404;
+      err.statusCode = 404;
       throw err;
     }
     if (prod.stock < quantity) {
       const err = new Error(`Insufficient stock for product ${prod.name}`);
-      err.status = 400;
+      err.statusCode = 400;
       throw err;
     }
     const price = prod.price;
     const subtotal = price * quantity;
     total += subtotal;
-    detailed.push({ product, quantity, price, subtotal });
+    detailed.push({ product, quantity, price, subtotal, size, color });
   }
   return { detailed, total };
 };
@@ -62,7 +62,7 @@ const createOrder = asyncHandler(async (req, res) => {
 const getMyOrders = asyncHandler(async (req, res) => {
   const orders = await Order.find({ user: req.user._id })
     .sort({ createdAt: -1 })
-    .populate('items.product', 'name price');
+    .populate('items.product', 'name price images');
   res.status(200).json({ success: true, count: orders.length, data: orders });
 });
 
@@ -75,7 +75,7 @@ const getSellerOrders = asyncHandler(async (req, res) => {
   const orders = await Order.find({ 'items.product': { $in: productIds } })
     .sort({ createdAt: -1 })
     .populate('user', 'name email')
-    .populate('items.product', 'name price');
+    .populate('items.product', 'name price images');
   res.status(200).json({ success: true, count: orders.length, data: orders });
 });
 
@@ -85,14 +85,15 @@ const getSellerOrders = asyncHandler(async (req, res) => {
 const getOrderById = asyncHandler(async (req, res) => {
   const order = await Order.findById(req.params.id)
     .populate('user', 'name email')
-    .populate('items.product', 'name price seller');
+    .populate('items.product', 'name price images seller');
   if (!order) {
     res.status(404);
     throw new Error('Order not found');
   }
-  const isOwner = order.user._id.toString() === req.user._id.toString();
+  const orderUserId = order.user && order.user._id ? order.user._id.toString() : (order.user ? order.user.toString() : null);
+  const isOwner = orderUserId === req.user._id.toString();
   const isAdmin = req.user.role === 'admin';
-  const isSeller = req.user.role === 'seller' && order.items.some(i => i.product.seller?.toString() === req.user._id.toString());
+  const isSeller = req.user.role === 'seller' && order.items.some(i => i.product?.seller?.toString() === req.user._id.toString());
   if (!(isOwner || isAdmin || isSeller)) {
     res.status(403);
     throw new Error('Not authorized to view this order');
@@ -105,13 +106,23 @@ const getOrderById = asyncHandler(async (req, res) => {
 // @access  Private (admin, seller of product in order)
 const updateOrderStatus = asyncHandler(async (req, res) => {
   const { orderStatus, paymentStatus } = req.body;
+  const validOrderStatuses = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'];
+  const validPaymentStatuses = ['Pending', 'Paid', 'Failed'];
+  if (orderStatus && !validOrderStatuses.includes(orderStatus)) {
+    res.status(400);
+    throw new Error('Invalid order status');
+  }
+  if (paymentStatus && !validPaymentStatuses.includes(paymentStatus)) {
+    res.status(400);
+    throw new Error('Invalid payment status');
+  }
   const order = await Order.findById(req.params.id).populate('items.product', 'seller');
   if (!order) {
     res.status(404);
     throw new Error('Order not found');
   }
   const isAdmin = req.user.role === 'admin';
-  const isSeller = req.user.role === 'seller' && order.items.some(i => i.product.seller?.toString() === req.user._id.toString());
+  const isSeller = req.user.role === 'seller' && order.items.some(i => i.product?.seller?.toString() === req.user._id.toString());
   if (!(isAdmin || isSeller)) {
     res.status(403);
     throw new Error('Not authorized to update order status');
@@ -131,7 +142,8 @@ const cancelOrder = asyncHandler(async (req, res) => {
     res.status(404);
     throw new Error('Order not found');
   }
-  if (order.user._id.toString() !== req.user._id.toString()) {
+  const orderOwnerId = order.user && order.user._id ? order.user._id.toString() : order.user.toString();
+  if (orderOwnerId !== req.user._id.toString()) {
     res.status(403);
     throw new Error('Cannot cancel others\' orders');
   }
@@ -141,6 +153,14 @@ const cancelOrder = asyncHandler(async (req, res) => {
   }
   order.orderStatus = 'Cancelled';
   await order.save();
+
+  // Restore stock for cancelled items
+  for (const item of order.items) {
+    if (item.product) {
+      await Product.findByIdAndUpdate(item.product, { $inc: { stock: item.quantity } });
+    }
+  }
+
   res.status(200).json({ success: true, data: order });
 });
 
@@ -151,7 +171,7 @@ const getAllOrders = asyncHandler(async (req, res) => {
   const orders = await Order.find({})
     .sort({ createdAt: -1 })
     .populate('user', 'name email')
-    .populate('items.product', 'name price');
+    .populate('items.product', 'name price images');
   res.status(200).json({ success: true, count: orders.length, data: orders });
 });
 

@@ -36,9 +36,9 @@ const users = [
 ];
 
 const categories = [
-  { name: 'Apparel', description: 'Clothing, shirts, jackets, pants, and dresses' },
-  { name: 'Footwear', description: 'Shoes, sneakers, sandals, and boots' },
-  { name: 'Accessories', description: 'Bags, belts, sunglasses, and jewelry' },
+  { name: 'Apparel', description: 'Clothing, shirts, jackets, pants, and dresses', categoryType: 'Top Wear' },
+  { name: 'Footwear', description: 'Shoes, sneakers, sandals, and boots', categoryType: 'Footwear' },
+  { name: 'Accessories', description: 'Bags, belts, sunglasses, and jewelry', categoryType: 'Accessories' },
 ];
 
 const brands = [

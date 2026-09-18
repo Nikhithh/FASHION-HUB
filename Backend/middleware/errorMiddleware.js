@@ -7,8 +7,10 @@ const notFound = (req, res, next) => {
 
 // Centralized error handler to catch and format all exceptions
 const errorHandler = (err, req, res, next) => {
-  // If status code is 200, force it to 500 (since it is an error block)
-  const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
+  // Prefer an explicit status set on the error (e.g. 401 invalid credentials,
+  // 400 validation/duplicate). Fall back to the response status, forcing
+  // untouched 200s to 500 since this is an error block.
+  const statusCode = err.statusCode || (res.statusCode === 200 ? 500 : res.statusCode);
   
   res.status(statusCode).json({
     success: false,

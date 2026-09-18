@@ -1,11 +1,23 @@
 const asyncHandler = require('express-async-handler');
 const Category = require('../models/Category');
 
-// @desc    Get all categories
-// @route   GET /api/categories
+const CATEGORY_TYPES = ['Top Wear', 'Bottom Wear', 'Footwear', 'Outerwear', 'Accessories'];
+
+// @desc    Get all categories (optional filter by categoryType)
+// @route   GET /api/categories?categoryType=
 // @access  Public
 const getCategories = asyncHandler(async (req, res) => {
-  const categories = await Category.find();
+  const { categoryType } = req.query;
+  const filter = {};
+
+  if (categoryType) {
+    if (!CATEGORY_TYPES.includes(categoryType)) {
+      return res.status(400).json({ success: false, message: 'Invalid category type' });
+    }
+    filter.categoryType = categoryType;
+  }
+
+  const categories = await Category.find(filter);
   res.status(200).json({ success: true, count: categories.length, data: categories });
 });
 
@@ -23,15 +35,16 @@ const getCategory = asyncHandler(async (req, res) => {
 
 // @desc    Create category
 // @route   POST /api/categories
-// @access  Private (admin or seller)
+// @access  Private (admin only)
 const createCategory = asyncHandler(async (req, res) => {
-  const category = await Category.create(req.body);
+  const { name, description, categoryType } = req.body;
+  const category = await Category.create({ name, description, categoryType });
   res.status(201).json({ success: true, data: category });
 });
 
 // @desc    Update category
 // @route   PUT /api/categories/:id
-// @access  Private (admin or seller)
+// @access  Private (admin only)
 const updateCategory = asyncHandler(async (req, res) => {
   const category = await Category.findByIdAndUpdate(req.params.id, req.body, {
     new: true,
@@ -46,7 +59,7 @@ const updateCategory = asyncHandler(async (req, res) => {
 
 // @desc    Delete category
 // @route   DELETE /api/categories/:id
-// @access  Private (admin or seller)
+// @access  Private (admin only)
 const deleteCategory = asyncHandler(async (req, res) => {
   const category = await Category.findByIdAndDelete(req.params.id);
   if (!category) {

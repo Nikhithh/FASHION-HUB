@@ -20,6 +20,13 @@ const createPayment = asyncHandler(async (req, res) => {
     throw new Error('Order not found');
   }
 
+  const isOwner = order.user.toString() === req.user._id.toString();
+  const isAdmin = req.user.role === 'admin';
+  if (!(isOwner || isAdmin)) {
+    res.status(403);
+    throw new Error('Not authorized to pay for this order');
+  }
+
   // Calculate amount from order's totalAmount (ignore any client‑provided amount)
   const amount = order.totalAmount;
 

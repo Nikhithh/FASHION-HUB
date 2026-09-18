@@ -1,7 +1,7 @@
 const express = require('express');
 const { protect, authorize } = require('../middleware/authMiddleware');
 const { validate } = require('../middleware/validationMiddleware');
-const { reviewRules } = require('../validations/reviewValidation');
+const { reviewRules, reviewUpdateRules } = require('../validations/reviewValidation');
 const {
   addReview,
   getReviewsByProduct,
@@ -12,14 +12,15 @@ const {
 
 const router = express.Router();
 
-// Add a review for a product (user)
+// Add a review for a product (user) - supports both / and /:productId
+router.post('/', protect, reviewRules, validate, addReview);
 router.post('/:productId', protect, reviewRules, validate, addReview);
 
 // Get all reviews for a product (public)
 router.get('/product/:productId', getReviewsByProduct);
 
-// Update own review
-router.put('/:id', protect, reviewRules, validate, updateReview);
+// Update own review (rating optional for comment-only edits)
+router.put('/:id', protect, reviewUpdateRules, validate, updateReview);
 
 // Delete own review
 router.delete('/:id', protect, deleteReview);

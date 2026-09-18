@@ -1,15 +1,45 @@
 // tests/admin.test.js
 // Jest + Supertest integration tests for Admin routes (dashboard & resource management)
+//
+// Auth strategy: the REAL `authorize` middleware is used, while `protect` is
+// stubbed to map fixed bearer tokens to users of each role. This exercises the
+// genuine role checks (admin allowed, seller/customer denied with 403,
+// missing token denied with 401) without needing a database.
 
 const request = require('supertest');
+
+jest.mock('../middleware/authMiddleware', () => {
+  const actual = jest.requireActual('../middleware/authMiddleware');
+  const usersByToken = {
+    'admin-token': { _id: 'admin1', name: 'Admin', email: 'admin@fashionhub.com', role: 'admin' },
+    'seller-token': { _id: 'seller1', name: 'Seller', email: 'seller@fashionhub.com', role: 'seller' },
+    'customer-token': { _id: 'cust1', name: 'Customer', email: 'cust@fashionhub.com', role: 'customer' },
+  };
+  return {
+    protect: jest.fn((req, res, next) => {
+      const header = req.headers && req.headers.authorization;
+      const token = header && header.startsWith('Bearer ') ? header.split(' ')[1] : null;
+      const user = token ? usersByToken[token] : undefined;
+      if (!user) {
+        res.status(401);
+        return next(new Error('Not authorized to access this resource, token missing'));
+      }
+      req.user = user;
+      return next();
+    }),
+    authorize: actual.authorize,
+    requireApprovedSeller: actual.requireApprovedSeller,
+  };
+});
+
 const app = require('../app'); // Express app
 
 // Mock all models used by admin controllers
-jest.mock('../models/User', () => ({ find: jest.fn(), findById: jest.fn(), findByIdAndUpdate: jest.fn(), findByIdAndDelete: jest.fn() }));
-jest.mock('../models/Brand', () => ({ find: jest.fn(), findById: jest.fn(), create: jest.fn(), findByIdAndUpdate: jest.fn(), findByIdAndDelete: jest.fn() }));
-jest.mock('../models/Category', () => ({ find: jest.fn(), findById: jest.fn(), create: jest.fn(), findByIdAndUpdate: jest.fn(), findByIdAndDelete: jest.fn() }));
-jest.mock('../models/Product', () => ({ find: jest.fn(), findById: jest.fn(), create: jest.fn(), findByIdAndUpdate: jest.fn(), findByIdAndDelete: jest.fn() }));
-jest.mock('../models/Order', () => ({ find: jest.fn(), findById: jest.fn(), findByIdAndUpdate: jest.fn(), findByIdAndDelete: jest.fn() }));
+jest.mock('../models/User', () => ({ find: jest.fn(), findById: jest.fn(), findByIdAndUpdate: jest.fn(), countDocuments: jest.fn() }));
+jest.mock('../models/Brand', () => ({ find: jest.fn(), findById: jest.fn(), create: jest.fn(), findByIdAndUpdate: jest.fn(), countDocuments: jest.fn() }));
+jest.mock('../models/Category', () => ({ find: jest.fn(), findById: jest.fn(), create: jest.fn(), findByIdAndUpdate: jest.fn(), countDocuments: jest.fn() }));
+jest.mock('../models/Product', () => ({ find: jest.fn(), findById: jest.fn(), create: jest.fn(), findByIdAndUpdate: jest.fn(), countDocuments: jest.fn() }));
+jest.mock('../models/Order', () => ({ find: jest.fn(), findById: jest.fn(), findByIdAndUpdate: jest.fn(), countDocuments: jest.fn(), aggregate: jest.fn() }));
 jest.mock('../models/Review', () => ({ find: jest.fn(), findById: jest.fn(), findByIdAndDelete: jest.fn() }));
 
 const User = require('../models/User');
@@ -19,10 +49,15 @@ const Product = require('../models/Product');
 const Order = require('../models/Order');
 const Review = require('../models/Review');
 
-// Dummy admin token – the protect/authorize middleware in the project accepts any token and checks role via decoded payload.
-const adminToken = 'Bearer dummyAdminToken';
-const nonAdminToken = 'Bearer dummyUserToken';
+// Fixed bearer tokens mapped to roles by the mocked `protect` above.
+const adminToken = 'Bearer admin-token';
+const sellerToken = 'Bearer seller-token';
+const customerToken = 'Bearer customer-token';
 const authHeader = token => ({ Authorization: token });
+
+// Route params are validated with isMongoId(), so tests must use ObjectId-like ids.
+const OID = '507f1f77bcf86cd799439011';
+const OID2 = '507f1f77bcf86cd799439012';
 
 describe('Admin Routes', () => {
   afterEach(() => {
@@ -31,14 +66,21 @@ describe('Admin Routes', () => {
 
   // ------------------- Dashboard -------------------
   test('GET /api/admin/dashboard returns aggregated statistics', async () => {
-    // Mock each model countDocuments call (implemented in controller via Model.countDocuments())
-    User.countDocuments = jest.fn().mockResolvedValue(10);
-    Brand.countDocuments = jest.fn().mockResolvedValue(3);
-    Category.countDocuments = jest.fn().mockResolvedValue(5);
-    Product.countDocuments = jest.fn().mockResolvedValue(20);
-    Order.countDocuments = jest.fn().mockResolvedValue(15);
-    Order.aggregate = jest.fn().mockResolvedValue([{ totalRevenue: 5000 }]);
-    Order.countDocuments.mockResolvedValueOnce(4); // pending orders mock
+    User.countDocuments.mockResolvedValue(10);
+    Brand.countDocuments.mockImplementation(async (filter) => {
+      if (!filter) return 3;
+      if (filter.verificationStatus === 'Approved') return 2;
+      if (filter.verificationStatus === 'Pending') return 1;
+      return 0;
+    });
+    Category.countDocuments.mockResolvedValue(5);
+    Product.countDocuments.mockResolvedValue(20);
+    Order.countDocuments.mockImplementation(async (filter) => {
+      if (!filter) return 15;
+      if (filter.orderStatus === 'Delivered') return 5;
+      return 4; // pending (not Delivered/Cancelled)
+    });
+    Order.aggregate.mockResolvedValue([{ totalRevenue: 5000 }]);
     const res = await request(app)
       .get('/api/admin/dashboard')
       .set(authHeader(adminToken))
@@ -52,13 +94,16 @@ describe('Admin Routes', () => {
       totalOrders: 15,
       totalRevenue: 5000,
       pendingOrders: 4,
+      completedOrders: 5,
+      verifiedBrands: 2,
+      pendingBrands: 1,
     });
   });
 
   // ------------------- Users Management -------------------
   test('GET /api/admin/users lists all users', async () => {
     const users = [{ _id: 'u1', name: 'Alice' }, { _id: 'u2', name: 'Bob' }];
-    User.find.mockResolvedValue(users);
+    User.find.mockReturnValue({ select: jest.fn().mockResolvedValue(users) });
     const res = await request(app)
       .get('/api/admin/users')
       .set(authHeader(adminToken))
@@ -69,37 +114,51 @@ describe('Admin Routes', () => {
   });
 
   test('GET /api/admin/users/:id returns a single user', async () => {
-    const user = { _id: 'u1', name: 'Alice' };
-    User.findById.mockResolvedValue(user);
+    const user = { _id: OID, name: 'Alice' };
+    User.findById.mockReturnValue({ select: jest.fn().mockResolvedValue(user) });
     const res = await request(app)
-      .get('/api/admin/users/u1')
+      .get(`/api/admin/users/${OID}`)
       .set(authHeader(adminToken))
       .expect(200);
-    expect(User.findById).toHaveBeenCalledWith('u1');
+    expect(User.findById).toHaveBeenCalledWith(OID);
     expect(res.body.success).toBe(true);
     expect(res.body.data).toMatchObject(user);
   });
 
   test('PUT /api/admin/users/:id updates a user', async () => {
-    const updated = { _id: 'u1', name: 'Alice Updated' };
-    User.findByIdAndUpdate.mockResolvedValue(updated);
+    const updated = { _id: OID, name: 'Alice Updated' };
+    User.findByIdAndUpdate.mockReturnValue({ select: jest.fn().mockResolvedValue(updated) });
     const res = await request(app)
-      .put('/api/admin/users/u1')
+      .put(`/api/admin/users/${OID}`)
       .set(authHeader(adminToken))
       .send({ name: 'Alice Updated' })
       .expect(200);
-    expect(User.findByIdAndUpdate).toHaveBeenCalledWith('u1', { name: 'Alice Updated' }, { new: true, runValidators: true });
+    expect(User.findByIdAndUpdate).toHaveBeenCalledWith(
+      OID,
+      { name: 'Alice Updated' },
+      { new: true, runValidators: true }
+    );
     expect(res.body.success).toBe(true);
     expect(res.body.data).toMatchObject(updated);
   });
 
-  test('DELETE /api/admin/users/:id removes a user', async () => {
-    User.findByIdAndDelete.mockResolvedValue({});
+  test('PUT /api/admin/users/:id rejects an invalid role', async () => {
     const res = await request(app)
-      .delete('/api/admin/users/u1')
+      .put(`/api/admin/users/${OID}`)
+      .set(authHeader(adminToken))
+      .send({ role: 'superadmin' })
+      .expect(400);
+    expect(res.body.success).toBe(false);
+    expect(User.findByIdAndUpdate).not.toHaveBeenCalled();
+  });
+
+  test('DELETE /api/admin/users/:id removes a user', async () => {
+    User.findById.mockResolvedValue({ _id: OID, deleteOne: jest.fn().mockResolvedValue({}) });
+    const res = await request(app)
+      .delete(`/api/admin/users/${OID}`)
       .set(authHeader(adminToken))
       .expect(200);
-    expect(User.findByIdAndDelete).toHaveBeenCalledWith('u1');
+    expect(User.findById).toHaveBeenCalledWith(OID);
     expect(res.body.success).toBe(true);
   });
 
@@ -161,23 +220,28 @@ describe('Admin Routes', () => {
     expect(res.body.data).toEqual(list);
   });
 
-  test('PUT /api/admin/orders/:id updates order status', async () => {
-    const updated = { _id: 'o1', status: 'shipped' };
-    Order.findByIdAndUpdate.mockResolvedValue(updated);
+  test('PUT /api/admin/orders/:id/status updates order status', async () => {
+    const orderDoc = { _id: OID, status: 'Pending', save: jest.fn().mockResolvedValue(true) };
+    Order.findById.mockResolvedValue(orderDoc);
     const res = await request(app)
-      .put('/api/admin/orders/o1')
+      .put(`/api/admin/orders/${OID}/status`)
       .set(authHeader(adminToken))
       .send({ status: 'shipped' })
       .expect(200);
-    expect(Order.findByIdAndUpdate).toHaveBeenCalledWith('o1', { status: 'shipped' }, { new: true, runValidators: true });
+    expect(Order.findById).toHaveBeenCalledWith(OID);
+    expect(orderDoc.save).toHaveBeenCalled();
     expect(res.body.success).toBe(true);
-    expect(res.body.data).toMatchObject(updated);
+    expect(res.body.data.status).toBe('shipped');
   });
 
   // ------------------- Reviews Management -------------------
   test('GET /api/admin/reviews lists all reviews', async () => {
     const reviews = [{ _id: 'r1' }, { _id: 'r2' }];
-    Review.find.mockResolvedValue(reviews);
+    Review.find.mockReturnValue({
+      populate: jest.fn().mockReturnValue({
+        populate: jest.fn().mockResolvedValue(reviews),
+      }),
+    });
     const res = await request(app)
       .get('/api/admin/reviews')
       .set(authHeader(adminToken))
@@ -188,27 +252,55 @@ describe('Admin Routes', () => {
   });
 
   test('DELETE /api/admin/reviews/:id removes a review', async () => {
-    Review.findByIdAndDelete.mockResolvedValue({});
+    Review.findById.mockResolvedValue({
+      _id: OID,
+      product: OID2,
+      deleteOne: jest.fn().mockResolvedValue({}),
+    });
+    Review.find.mockResolvedValue([]);
+    Product.findByIdAndUpdate.mockResolvedValue({});
     const res = await request(app)
-      .delete('/api/admin/reviews/r1')
+      .delete(`/api/admin/reviews/${OID}`)
       .set(authHeader(adminToken))
       .expect(200);
-    expect(Review.findByIdAndDelete).toHaveBeenCalledWith('r1');
+    expect(Review.findById).toHaveBeenCalledWith(OID);
     expect(res.body.success).toBe(true);
   });
 
   // ------------------- Authorization Failures -------------------
-  test('Access admin routes with non‑admin token returns 403', async () => {
+  test('Customer cannot access admin API (403)', async () => {
     const res = await request(app)
       .get('/api/admin/dashboard')
-      .set(authHeader(nonAdminToken))
+      .set(authHeader(customerToken))
       .expect(403);
     expect(res.body.success).toBe(false);
+  });
+
+  test('Seller cannot access admin API (403)', async () => {
+    const res = await request(app)
+      .get('/api/admin/dashboard')
+      .set(authHeader(sellerToken))
+      .expect(403);
+    expect(res.body.success).toBe(false);
+  });
+
+  test('Seller cannot access admin user management (403)', async () => {
+    await request(app)
+      .get('/api/admin/users')
+      .set(authHeader(sellerToken))
+      .expect(403);
   });
 
   test('Access admin routes without token returns 401', async () => {
     await request(app)
       .get('/api/admin/dashboard')
+      .expect(401);
+  });
+
+  test('Access admin routes with an unknown token returns 401', async () => {
+    await request(app)
+      .get('/api/admin/dashboard')
+      .set(authHeader('Bearer unknown-token'))
       .expect(401);
   });
 });

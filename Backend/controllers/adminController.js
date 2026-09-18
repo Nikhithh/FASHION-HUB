@@ -19,13 +19,13 @@ const getDashboard = asyncHandler(async (req, res) => {
   ]);
 
   const revenueResult = await Order.aggregate([
-    { $match: { status: { $in: ['completed', 'delivered'] } } },
+    { $match: { orderStatus: { $in: ['Delivered'] } } },
     { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' } } },
   ]);
   const totalRevenue = revenueResult[0] ? revenueResult[0].totalRevenue : 0;
 
-  const pendingOrders = await Order.countDocuments({ status: { $ne: 'completed' } });
-  const completedOrders = await Order.countDocuments({ status: { $in: ['completed', 'delivered'] } });
+  const pendingOrders = await Order.countDocuments({ orderStatus: { $nin: ['Delivered', 'Cancelled'] } });
+  const completedOrders = await Order.countDocuments({ orderStatus: 'Delivered' });
   const verifiedBrands = await Brand.countDocuments({ verificationStatus: 'Approved' });
   const pendingBrands = await Brand.countDocuments({ verificationStatus: 'Pending' });
   const rejectedBrands = await Brand.countDocuments({ verificationStatus: 'Rejected' });
@@ -64,11 +64,16 @@ const getUser = asyncHandler(async (req, res) => {
 });
 
 const updateUser = asyncHandler(async (req, res) => {
-  const { name, email, role } = req.body;
+  const { name, email, role, isVerified } = req.body;
   const updates = {};
   if (name) updates.name = name;
   if (email) updates.email = email;
   if (role) updates.role = role;
+  // Model-API parity: the User schema carries isVerified, so admins can
+  // read/write it here. NOTE: nothing in the current auth/product flow
+  // gates on this flag — live seller verification is enforced through
+  // Brand.verificationStatus (admin approve/reject brand routes).
+  if (isVerified !== undefined) updates.isVerified = isVerified;
   const user = await User.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true }).select('-password');
   if (!user) {
     res.status(404);
@@ -83,7 +88,7 @@ const deleteUser = asyncHandler(async (req, res) => {
     res.status(404);
     throw new Error('User not found');
   }
-  await user.remove();
+  await user.deleteOne();
   res.status(200).json({ success: true, data: {} });
 });
 
@@ -94,12 +99,18 @@ const createBrand = asyncHandler(async (req, res) => {
 });
 
 const getBrands = asyncHandler(async (req, res) => {
-  const brands = await Brand.find();
+  const query = Brand.find();
+  const brands = query && typeof query.populate === 'function'
+    ? await query.populate('seller', 'name email')
+    : await query;
   res.status(200).json({ success: true, count: brands.length, data: brands });
 });
 
 const getBrand = asyncHandler(async (req, res) => {
-  const brand = await Brand.findById(req.params.id);
+  const query = Brand.findById(req.params.id);
+  const brand = query && typeof query.populate === 'function'
+    ? await query.populate('seller', 'name email')
+    : await query;
   if (!brand) {
     res.status(404);
     throw new Error('Brand not found');
@@ -122,7 +133,7 @@ const deleteBrand = asyncHandler(async (req, res) => {
     res.status(404);
     throw new Error('Brand not found');
   }
-  await brand.remove();
+  await brand.deleteOne();
   res.status(200).json({ success: true, data: {} });
 });
 
@@ -133,44 +144,98 @@ const deleteBrand = asyncHandler(async (req, res) => {
  * @access Private (admin)
  */
 const getPendingBrands = asyncHandler(async (req, res) => {
-  const brands = await Brand.find({ verificationStatus: 'Pending' });
+  const query = Brand.find({ verificationStatus: 'Pending' });
+  const brands = query && typeof query.populate === 'function'
+    ? await query.populate('seller', 'name email')
+    : await query;
   res.status(200).json({ success: true, count: brands.length, data: brands });
 });
 
 /**
- * @desc Approve a brand
+ * @desc Approve a brand (manual admin verification)
  * @route PUT /api/admin/brands/:id/approve
  * @access Private (admin)
  */
 const approveBrand = asyncHandler(async (req, res) => {
-  const brand = await Brand.findByIdAndUpdate(
-    req.params.id,
-    { verificationStatus: 'Approved' },
-    { new: true, runValidators: true }
-  );
+  const brand = await Brand.findById(req.params.id);
   if (!brand) {
     res.status(404);
     throw new Error('Brand not found');
   }
+  brand.verificationStatus = 'Approved';
+  brand.verifiedAt = new Date();
+  brand.rejectionReason = undefined;
+  if (req.body && typeof req.body.adminVerificationNote === 'string') {
+    brand.adminVerificationNote = req.body.adminVerificationNote;
+  }
+  await brand.save();
   res.status(200).json({ success: true, data: brand });
 });
 
 /**
- * @desc Reject a brand
+ * @desc Reject a brand (manual admin verification)
  * @route PUT /api/admin/brands/:id/reject
  * @access Private (admin)
  */
 const rejectBrand = asyncHandler(async (req, res) => {
-  const brand = await Brand.findByIdAndUpdate(
-    req.params.id,
-    { verificationStatus: 'Rejected' },
-    { new: true, runValidators: true }
-  );
+  const reason = req.body && (req.body.rejectionReason || req.body.adminVerificationNote);
+  if (!reason || (typeof reason === 'string' && reason.trim() === '')) {
+    res.status(400);
+    throw new Error('Rejection reason is required');
+  }
+  const brand = await Brand.findById(req.params.id);
   if (!brand) {
     res.status(404);
     throw new Error('Brand not found');
   }
+  brand.verificationStatus = 'Rejected';
+  brand.rejectionReason = typeof reason === 'string' ? reason : String(reason);
+  if (req.body && typeof req.body.adminVerificationNote === 'string') {
+    brand.adminVerificationNote = req.body.adminVerificationNote;
+  } else {
+    brand.adminVerificationNote = brand.rejectionReason;
+  }
+  await brand.save();
   res.status(200).json({ success: true, data: brand });
+});
+
+/**
+ * @desc Stream a brand verification document (admin only)
+ * @route GET /api/admin/brands/:id/verification-document
+ * @access Private (admin)
+ */
+const getBrandVerificationDocument = asyncHandler(async (req, res) => {
+  const path = require('path');
+  const fs = require('fs');
+  const { brandDocDir } = require('../middleware/upload');
+  const brand = await Brand.findById(req.params.id);
+  if (!brand) {
+    res.status(404);
+    throw new Error('Brand not found');
+  }
+  if (!brand.verificationDocument) {
+    res.status(404);
+    throw new Error('Verification document not found');
+  }
+  const filename = path.basename(brand.verificationDocument);
+  if (!filename || filename.includes('..')) {
+    res.status(404);
+    throw new Error('Verification document not found');
+  }
+  const absPath = path.join(brandDocDir, filename);
+  if (!fs.existsSync(absPath)) {
+    res.status(404);
+    throw new Error('Verification document not found');
+  }
+  const mime = brand.verificationDocumentMimeType
+    || (path.extname(absPath).toLowerCase() === '.pdf' ? 'application/pdf'
+      : path.extname(absPath).toLowerCase() === '.png' ? 'image/png' : 'image/jpeg');
+  res.setHeader('Content-Type', mime);
+  res.setHeader(
+    'Content-Disposition',
+    `inline; filename="${(brand.verificationDocumentName || 'verification-document').replace(/"/g, '')}"`
+  );
+  res.sendFile(absPath);
 });
 
 // ---------- Category Management ----------
@@ -208,7 +273,7 @@ const deleteCategory = asyncHandler(async (req, res) => {
     res.status(404);
     throw new Error('Category not found');
   }
-  await category.remove();
+  await category.deleteOne();
   res.status(200).json({ success: true, data: {} });
 });
 
@@ -247,7 +312,7 @@ const deleteProduct = asyncHandler(async (req, res) => {
     res.status(404);
     throw new Error('Product not found');
   }
-  await product.remove();
+  await product.deleteOne();
   res.status(200).json({ success: true, data: {} });
 });
 
@@ -258,13 +323,15 @@ const getOrders = asyncHandler(async (req, res) => {
 });
 
 const updateOrderStatus = asyncHandler(async (req, res) => {
-  const { status } = req.body;
+  const { status, orderStatus, paymentStatus } = req.body;
   const order = await Order.findById(req.params.id);
   if (!order) {
     res.status(404);
     throw new Error('Order not found');
   }
-  order.status = status || order.status;
+  const next = orderStatus || status;
+  if (next) order.orderStatus = next;
+  if (paymentStatus) order.paymentStatus = paymentStatus;
   await order.save();
   res.status(200).json({ success: true, data: order });
 });
@@ -281,7 +348,21 @@ const deleteAnyReview = asyncHandler(async (req, res) => {
     res.status(404);
     throw new Error('Review not found');
   }
-  await review.remove();
+  const productId = review.product;
+  await review.deleteOne();
+
+  // Recalculate product rating and numReviews
+  if (productId) {
+    const reviews = await Review.find({ product: productId });
+    const numReviews = reviews ? reviews.length : 0;
+    let rating = 0;
+    if (numReviews > 0) {
+      const sum = reviews.reduce((acc, item) => acc + (Number(item.rating) || 0), 0);
+      rating = Math.round((sum / numReviews) * 10) / 10;
+    }
+    await Product.findByIdAndUpdate(productId, { rating, numReviews });
+  }
+
   res.status(200).json({ success: true, data: {} });
 });
 
@@ -302,6 +383,7 @@ module.exports = {
   getPendingBrands,
   approveBrand,
   rejectBrand,
+  getBrandVerificationDocument,
   // Categories
   createCategory,
   getCategories,

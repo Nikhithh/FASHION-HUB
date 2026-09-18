@@ -34,6 +34,26 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false, // Useful for sellers who need admin approval
     },
+    passwordResetToken: {
+      type: String,
+      select: false, // never returned in queries by default
+    },
+    passwordResetExpires: {
+      type: Date,
+      select: false,
+    },
+    wishlist: [
+      { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+    ],
+    addresses: [
+      {
+        label: { type: String, trim: true, default: '' }, // e.g. Home, Office
+        address: { type: String, required: true, trim: true },
+        city: { type: String, required: true, trim: true },
+        postalCode: { type: String, required: true, trim: true },
+        country: { type: String, required: true, trim: true },
+      },
+    ],
   },
   {
     timestamps: true,
@@ -43,7 +63,7 @@ const userSchema = new mongoose.Schema(
 // Encrypt password using bcryptjs before saving
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) {
-    next();
+    return next();
   }
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);

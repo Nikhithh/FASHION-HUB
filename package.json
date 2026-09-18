@@ -1,0 +1,12 @@
+{
+  "name": "fashion-hub",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Fashion-Hub full dev setup: Backend (port 5000) + Frontend (port 5173)",
+  "scripts": {
+    "dev": "powershell -ExecutionPolicy Bypass -File ./dev.ps1",
+    "dev:backend": "powershell -ExecutionPolicy Bypass -File ./dev.ps1 -BackendOnly -NoWait",
+    "dev:frontend": "powershell -ExecutionPolicy Bypass -File ./dev.ps1 -FrontendOnly -NoWait",
+    "stop": "powershell -ExecutionPolicy Bypass -File ./dev.ps1 -Stop"
+  }
+}

@@ -468,4 +468,86 @@ describe('Product Controller', () => {
     await deleteProduct(delReq, delRes);
     expect(delRes.status).toHaveBeenCalledWith(200);
   });
+
+  // Approved seller + authorized brand -> success
+  test('Approved seller + authorized brand succeeds', async () => {
+    Category.findOne.mockResolvedValue({ name: 'Category1' });
+    Brand.findById.mockResolvedValue({ name: 'MyBrand', verificationStatus: 'Approved', seller: 's1' });
+    Product.create.mockResolvedValue({ _id: 'p_new', name: 'Product New' });
+
+    const req = {
+      user: { role: 'seller', id: 's1' },
+      body: { name: 'Product New', category: 'Category1', brand: 'b1' }
+    };
+    const res = mockResponse();
+
+    await createProduct(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(201);
+  });
+
+  // Unauthorized brand (belonging to another seller) -> rejected
+  test('Seller with unauthorized brand belonging to another seller is rejected', async () => {
+    Category.findOne.mockResolvedValue({ name: 'Category1' });
+    Brand.findById.mockResolvedValue({ name: 'OtherBrand', verificationStatus: 'Approved', seller: 'anotherSeller' });
+
+    const req = {
+      user: { role: 'seller', id: 's1' },
+      body: { name: 'Product1', category: 'Category1', brand: 'b_other' }
+    };
+    const res = mockResponse();
+
+    await createProduct(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  // Seller updating product to unauthorized brand belonging to another seller -> rejected
+  test('Seller updating product to an unauthorized brand is rejected', async () => {
+    Product.findById.mockResolvedValue({ _id: 'p1', seller: 's1', brand: 'MyBrand' });
+    Brand.findById.mockResolvedValue({ name: 'OtherBrand', verificationStatus: 'Approved', seller: 'anotherSeller' });
+
+    const req = {
+      user: { role: 'seller', id: 's1' },
+      params: { id: 'p1' },
+      body: { brand: 'b_other' }
+    };
+    const res = mockResponse();
+
+    await updateProduct(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  // Customer cannot create, update or delete products -> rejected
+  test('Customer cannot create product', async () => {
+    const req = {
+      user: { role: 'customer', id: 'c1' },
+      body: { name: 'Product1' }
+    };
+    const res = mockResponse();
+    await createProduct(req, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  test('Customer cannot update product', async () => {
+    const req = {
+      user: { role: 'customer', id: 'c1' },
+      params: { id: 'p1' },
+      body: { name: 'Product1' }
+    };
+    const res = mockResponse();
+    await updateProduct(req, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  test('Customer cannot delete product', async () => {
+    const req = {
+      user: { role: 'customer', id: 'c1' },
+      params: { id: 'p1' }
+    };
+    const res = mockResponse();
+    await deleteProduct(req, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
 });

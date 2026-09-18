@@ -35,13 +35,13 @@ export const CartProvider = ({ children }) => {
     fetchCart();
   }, [user]);
 
-  const addToCart = async (productId, quantity, price) => {
+  const addToCart = async (productId, quantity, price, size, color) => {
     if (!user) {
       return { success: false, error: 'Please login to add items to cart' };
     }
     setLoading(true);
     try {
-      const res = await api.post('/cart', { product: productId, quantity, price });
+      const res = await api.post('/cart', { product: productId, quantity, price, size, color });
       if (res.data && res.data.success) {
         setCartItems(res.data.data.items || []);
         setCartTotal(res.data.data.total || 0);

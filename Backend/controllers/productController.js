@@ -1,7 +1,42 @@
 const Product = require('../models/Product');
 const asyncHandler = require('express-async-handler');
 const Brand = require('../models/Brand'); // added for verification
+const mongoose = require('mongoose');
+const { toPublicImagePath } = require('../middleware/upload');
 
+// Parse an images-ish body value (array, JSON-stringified array, or single string)
+// into a clean array of string URLs. Never throws.
+const parseImageUrls = (value) => {
+  if (value === undefined || value === null || value === '') return [];
+  if (Array.isArray(value)) return value.filter((u) => typeof u === 'string' && u.trim() !== '');
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed === '') return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed.filter((u) => typeof u === 'string' && u.trim() !== '');
+    } catch (e) {
+      // not JSON — treat as single URL (unless multipart marker)
+    }
+    return [trimmed];
+  }
+  return [];
+};
+
+// Merge uploaded files (req.files) with existing/URL images from the body.
+// Body may carry `existingImages` (preferred, JSON or array) or `images`.
+const collectImageUrls = (req, fallback = []) => {
+  const uploaded = (req.files || []).map(toPublicImagePath);
+  let base = [];
+  if (req.body && req.body.existingImages !== undefined) {
+    base = parseImageUrls(req.body.existingImages);
+  } else if (req.body && req.body.images !== undefined) {
+    base = parseImageUrls(req.body.images);
+  } else {
+    base = Array.isArray(fallback) ? fallback : [];
+  }
+  return [...base, ...uploaded];
+};
 // @desc    Get all products
 // @route   GET /api/products
 // @access  Public
@@ -28,6 +63,11 @@ const getProduct = asyncHandler(async (req, res) => {
 const Category = require('../models/Category');
 
 const createProduct = asyncHandler(async (req, res) => {
+  // Reject customers
+  if (req.user && req.user.role === 'customer') {
+    return res.status(403).json({ success: false, message: 'Not authorized to create products' });
+  }
+
   // Category validation
   if (req.body.category) {
     const categoryExists = await Category.findOne({ name: req.body.category });
@@ -47,11 +87,24 @@ const createProduct = asyncHandler(async (req, res) => {
     if (!brandId) {
       return res.status(400).json({ success: false, message: 'Brand is required' });
     }
-    const brand = await Brand.findById(brandId);
+    let brand = await Brand.findById(brandId);
+    if (!brand) {
+      brand = await Brand.findOne({ name: brandId });
+    }
     if (!brand || brand.verificationStatus !== 'Approved') {
       return res.status(403).json({ success: false, message: 'Brand is not approved.' });
     }
+    // Check if brand belongs to another seller
+    if (brand.seller && req.user.id && brand.seller.toString() !== req.user.id.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized to sell products under this brand.' });
+    }
+    if (brand.name) {
+      req.body.brand = brand.name;
+    }
   }
+
+  // Merge uploaded files + URL-based images (multipart or JSON both work)
+  req.body.images = collectImageUrls(req, []);
 
   const product = await Product.create(req.body);
   res.status(201).json({ success: true, data: product });
@@ -61,6 +114,11 @@ const createProduct = asyncHandler(async (req, res) => {
 // @route   PUT /api/products/:id
 // @access  Private
 const updateProduct = asyncHandler(async (req, res) => {
+  // Reject customers
+  if (req.user && req.user.role === 'customer') {
+    return res.status(403).json({ success: false, message: 'Not authorized to update products' });
+  }
+
   let product = await Product.findById(req.params.id);
   if (!product) {
     res.status(404);
@@ -69,7 +127,7 @@ const updateProduct = asyncHandler(async (req, res) => {
 
   // Ownership and brand check for seller
   if (req.user && req.user.role !== 'admin') {
-    if (product.seller && product.seller.toString() !== req.user.id) {
+    if (product.seller && product.seller.toString() !== req.user.id.toString()) {
       return res.status(403).json({ success: false, message: 'Not authorized to update this product' });
     }
 
@@ -80,9 +138,19 @@ const updateProduct = asyncHandler(async (req, res) => {
 
     const brandIdToCheck = req.body.brand || product.brand;
     if (brandIdToCheck) {
-      const brand = await Brand.findById(brandIdToCheck);
+      let brand = await Brand.findById(brandIdToCheck);
+      if (!brand) {
+        brand = await Brand.findOne({ name: brandIdToCheck });
+      }
       if (!brand || brand.verificationStatus !== 'Approved') {
         return res.status(403).json({ success: false, message: 'Brand is not approved.' });
+      }
+      // Check if brand belongs to another seller
+      if (brand.seller && req.user.id && brand.seller.toString() !== req.user.id.toString()) {
+        return res.status(403).json({ success: false, message: 'Not authorized to sell products under this brand.' });
+      }
+      if (req.body.brand && brand.name) {
+        req.body.brand = brand.name;
       }
     }
   }
@@ -94,6 +162,13 @@ const updateProduct = asyncHandler(async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid category. Please select an existing category.' });
     }
   }
+
+  // Merge images: preserve existing URLs sent as `existingImages`/`images`,
+  // otherwise keep current product images, then append newly uploaded files.
+  const keepBase = req.body.existingImages !== undefined || req.body.images !== undefined
+    ? collectImageUrls(req, [])
+    : collectImageUrls(req, product.images || []);
+  req.body.images = keepBase;
 
   product = await Product.findByIdAndUpdate(req.params.id, req.body, {
     new: true,
@@ -107,6 +182,11 @@ const updateProduct = asyncHandler(async (req, res) => {
 // @route   DELETE /api/products/:id
 // @access  Private
 const deleteProduct = asyncHandler(async (req, res) => {
+  // Reject customers
+  if (req.user && req.user.role === 'customer') {
+    return res.status(403).json({ success: false, message: 'Not authorized to delete products' });
+  }
+
   const product = await Product.findById(req.params.id);
   if (!product) {
     res.status(404);
@@ -114,7 +194,7 @@ const deleteProduct = asyncHandler(async (req, res) => {
   }
 
   if (req.user && req.user.role !== 'admin') {
-    if (product.seller && product.seller.toString() !== req.user.id) {
+    if (product.seller && product.seller.toString() !== req.user.id.toString()) {
       return res.status(403).json({ success: false, message: 'Not authorized to delete this product' });
     }
   }
@@ -139,7 +219,6 @@ const searchProducts = asyncHandler(async (req, res) => {
 // @desc    Filter products by brand, category, price range, and keyword
 // @route   GET /api/products/filter?brand=...&category=...&minPrice=...&maxPrice=...&keyword=...
 // @access  Public
-const mongoose = require('mongoose');
 
 const filterProducts = asyncHandler(async (req, res) => {
   const { keyword, brand, category, minPrice, maxPrice } = req.query;
@@ -198,6 +277,85 @@ const filterProducts = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, count: products.length, data: products });
 });
 
+// @desc    Compare multiple products
+// @route   GET /api/products/compare?ids=commaSeparatedIds
+// @access  Public
+const compareProducts = asyncHandler(async (req, res) => {
+  const idsParam = req.query.ids;
+  if (!idsParam) {
+    return res.status(400).json({ success: false, message: 'Product IDs are required' });
+  }
+
+  const ids = idsParam.split(',').map(id => id.trim()).filter(id => id);
+
+  if (ids.length < 2) {
+    return res.status(400).json({ success: false, message: 'At least 2 product IDs are required for comparison' });
+  }
+  if (ids.length > 4) {
+    return res.status(400).json({ success: false, message: 'Maximum 4 products can be compared at a time' });
+  }
+
+  // Validate each ID format
+  for (const id of ids) {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: `Invalid product ID: ${id}` });
+    }
+  }
+
+  // Reject duplicate IDs
+  const uniqueIds = [...new Set(ids)];
+  if (uniqueIds.length !== ids.length) {
+    return res.status(400).json({ success: false, message: 'Duplicate product IDs are not allowed' });
+  }
+
+  // Fetch products — category and brand are Strings, not ObjectId refs
+  const products = await Product.find({ _id: { $in: ids } });
+
+  if (products.length !== ids.length) {
+    return res.status(404).json({ success: false, message: 'One or more products not found' });
+  }
+
+  // Collect unique category names from the fetched products
+  const categoryNames = [...new Set(products.map(p => p.category).filter(Boolean))];
+
+  // Query the Category collection to get categoryType for each category name
+  const categoryDocs = await Category.find({ name: { $in: categoryNames } });
+  const categoryMap = {};
+  categoryDocs.forEach(cat => {
+    categoryMap[cat.name] = cat.categoryType;
+  });
+
+  // Build the response with only the required fields
+  const formatted = products.map(p => ({
+    _id: p._id,
+    name: p.name,
+    brand: p.brand || null,
+    category: p.category || null,
+    categoryType: p.category ? (categoryMap[p.category] || null) : null,
+    price: p.price,
+    size: p.size || null,
+    color: p.color || null,
+    stock: p.stock,
+    rating: p.rating,
+    description: p.description,
+    images: p.images,
+  }));
+
+  res.status(200).json({ success: true, data: formatted });
+});
+// @desc    Upload product images (multipart/form-data, field: images, max 5)
+// @route   POST /api/products/upload
+// @access  Private (seller, admin)
+const uploadProductImages = asyncHandler(async (req, res) => {
+  if (req.user && req.user.role === 'customer') {
+    return res.status(403).json({ success: false, message: 'Not authorized to upload images' });
+  }
+  if (!req.files || req.files.length === 0) {
+    return res.status(400).json({ success: false, message: 'No image files provided. Use field "images".' });
+  }
+  const urls = req.files.map(toPublicImagePath);
+  res.status(201).json({ success: true, count: urls.length, data: urls });
+});
 module.exports = {
   getProducts,
   getProduct,
@@ -206,4 +364,6 @@ module.exports = {
   deleteProduct,
   searchProducts,
   filterProducts,
+  compareProducts,
+  uploadProductImages,
 };

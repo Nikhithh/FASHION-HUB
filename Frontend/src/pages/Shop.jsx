@@ -1,15 +1,33 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../services/api';
-import { FiSearch, FiSliders, FiCheck, FiXCircle } from 'react-icons/fi';
+import { resolveImageUrl } from '../utils/imageUrl';
+import {
+  FiXCircle,
+  FiColumns,
+  FiX
+} from 'react-icons/fi';
+import { useComparison } from '../context/ComparisonContext';
+import { toast } from 'react-toastify';
+import usePageMeta from '../hooks/usePageMeta';
+import FilterSidebar from '../components/Product/FilterSidebar';
+import ProductCard from '../components/Product/ProductCard';
+import { ProductGridSkeleton } from '../components/UI/Loader';
 
 const Shop = () => {
+  usePageMeta({
+    title: 'Shop | FashionHub',
+    description: 'Browse and filter clothing, footwear and accessories from verified brands on FashionHub.',
+  });
   const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [brands, setBrands] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Comparison context
+  const { selected, addProduct, removeProduct, clearComparison } = useComparison();
 
   // Search, Category, and Brand state synced with URL SearchParams
   const keywordParam = searchParams.get('keyword') || '';
@@ -24,6 +42,16 @@ const Shop = () => {
   const [brand, setBrand] = useState(brandParam);
   const [minPrice, setMinPrice] = useState(minPriceParam);
   const [maxPrice, setMaxPrice] = useState(maxPriceParam);
+
+  // Keep filters in sync when navigating (e.g. Navbar search, Footer/Home category links
+  // while already on /shop).
+  useEffect(() => {
+    setKeyword(keywordParam);
+    setCategory(categoryParam);
+    setBrand(brandParam);
+    setMinPrice(minPriceParam);
+    setMaxPrice(maxPriceParam);
+  }, [keywordParam, categoryParam, brandParam, minPriceParam, maxPriceParam]);
 
   useEffect(() => {
     // Load categories & brands for sidebar filter options
@@ -58,7 +86,7 @@ const Shop = () => {
         if (maxPriceParam) params.maxPrice = maxPriceParam;
 
         // If any filters are applied, use /filter
-        // If only keyword is applied, use /search (or /filter, both work since we updated /filter to accept keyword)
+        // If only keyword is applied, use /search
         if (Object.keys(params).length > 0) {
           if (Object.keys(params).length === 1 && params.keyword) {
              endpoint = '/products/search';
@@ -120,6 +148,19 @@ const Shop = () => {
     setSearchParams({});
   };
 
+  // Clear only the search keyword, preserving category/brand/price/sort filters.
+  const handleClearSearch = () => {
+    setKeyword('');
+    updateParams({
+      keyword: '',
+      category,
+      brand,
+      minPrice,
+      maxPrice,
+      sort: sortParam,
+    });
+  };
+
   const updateParams = (newParams) => {
     const nextParams = new URLSearchParams();
     Object.entries(newParams).forEach(([key, val]) => {
@@ -130,122 +171,42 @@ const Shop = () => {
     setSearchParams(nextParams);
   };
 
+  const isCompared = (productId) => {
+    return selected.some((p) => p._id === productId);
+  };
+
+  const handleToggleCompare = (product) => {
+    if (isCompared(product._id)) {
+      removeProduct(product._id);
+      toast.info(`Removed ${product.name} from comparison`);
+    } else {
+      const res = addProduct(product);
+      if (!res.success) {
+        toast.warning(res.message);
+      } else {
+        toast.success(`Added ${product.name} to compare`);
+      }
+    }
+  };
+
   return (
-    <div className="flex flex-col md:flex-row gap-8 pb-16">
-      {/* Sidebar Filter Panel */}
-      <aside className="w-full md:w-64 space-y-6 flex-shrink-0 text-left">
-        <div className="flex items-center justify-between pb-4 border-b border-gray-200 dark:border-gray-800">
-          <div className="flex items-center gap-2">
-            <FiSliders className="text-purple-600 dark:text-purple-400" />
-            <h2 className="font-bold text-lg text-gray-900 dark:text-white uppercase tracking-wider">Filters</h2>
-          </div>
-          <button 
-            onClick={handleClearFilters}
-            className="text-xs text-red-500 hover:text-red-700 font-semibold"
-          >
-            Clear All
-          </button>
-        </div>
-
-        {/* Search */}
-        <form onSubmit={handleApplyFilters} className="relative">
-          <input
-            type="text"
-            placeholder="Search products..."
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            className="w-full px-4 py-2.5 pl-10 bg-white dark:bg-[#1f2028] border border-gray-300 dark:border-gray-800 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
-          />
-          <FiSearch className="absolute left-3 top-3.5 text-gray-400" />
-        </form>
-
-        {/* Categories */}
-        <div className="space-y-3">
-          <h3 className="font-semibold text-sm text-gray-900 dark:text-gray-200 uppercase tracking-wider">Categories</h3>
-          <div className="flex flex-col space-y-2">
-            <button
-              onClick={() => setCategory('')}
-              className={`text-sm text-left px-3 py-1.5 rounded-lg transition-colors flex items-center justify-between ${
-                !category ? 'bg-purple-50 dark:bg-purple-950/20 text-purple-600 font-semibold' : 'text-gray-650 hover:bg-gray-100 dark:hover:bg-gray-800'
-              }`}
-            >
-              All Categories
-              {!category && <FiCheck size={14} />}
-            </button>
-            {categories.map((cat) => (
-              <button
-                key={cat._id}
-                onClick={() => setCategory(cat.name)}
-                className={`text-sm text-left px-3 py-1.5 rounded-lg transition-colors flex items-center justify-between ${
-                  category === cat.name ? 'bg-purple-50 dark:bg-purple-950/20 text-purple-600 font-semibold' : 'text-gray-650 hover:bg-gray-100 dark:hover:bg-gray-800'
-                }`}
-              >
-                {cat.name}
-                {category === cat.name && <FiCheck size={14} />}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Brands */}
-        <div className="space-y-3">
-          <h3 className="font-semibold text-sm text-gray-900 dark:text-gray-200 uppercase tracking-wider">Brands</h3>
-          <div className="flex flex-col space-y-2">
-            <button
-              onClick={() => setBrand('')}
-              className={`text-sm text-left px-3 py-1.5 rounded-lg transition-colors flex items-center justify-between ${
-                !brand ? 'bg-purple-50 dark:bg-purple-950/20 text-purple-600 font-semibold' : 'text-gray-650 hover:bg-gray-100 dark:hover:bg-gray-800'
-              }`}
-            >
-              All Brands
-              {!brand && <FiCheck size={14} />}
-            </button>
-            {brands.map((b) => (
-              <button
-                key={b._id}
-                onClick={() => setBrand(b.name)}
-                className={`text-sm text-left px-3 py-1.5 rounded-lg transition-colors flex items-center justify-between ${
-                  brand === b.name ? 'bg-purple-50 dark:bg-purple-950/20 text-purple-600 font-semibold' : 'text-gray-650 hover:bg-gray-100 dark:hover:bg-gray-800'
-                }`}
-              >
-                {b.name}
-                {brand === b.name && <FiCheck size={14} />}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Price Range */}
-        <div className="space-y-3">
-          <h3 className="font-semibold text-sm text-gray-900 dark:text-gray-200 uppercase tracking-wider">Price Range</h3>
-          <div className="flex items-center space-x-2">
-            <input
-              type="number"
-              placeholder="Min"
-              value={minPrice}
-              onChange={(e) => setMinPrice(e.target.value)}
-              className="w-1/2 px-3 py-2 bg-white dark:bg-[#1f2028] border border-gray-300 dark:border-gray-800 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
-            />
-            <span className="text-gray-500">-</span>
-            <input
-              type="number"
-              placeholder="Max"
-              value={maxPrice}
-              onChange={(e) => setMaxPrice(e.target.value)}
-              className="w-1/2 px-3 py-2 bg-white dark:bg-[#1f2028] border border-gray-300 dark:border-gray-800 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
-            />
-          </div>
-        </div>
-        
-        {/* Apply Filters Button */}
-        <button
-          onClick={handleApplyFilters}
-          className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2.5 rounded-xl transition-colors"
-        >
-          Apply Filters
-        </button>
-
-      </aside>
+    <div className="flex flex-col md:flex-row gap-8 pb-24 relative">
+      <FilterSidebar
+        categories={categories}
+        brands={brands}
+        keyword={keyword}
+        onKeywordChange={setKeyword}
+        category={category}
+        onCategoryChange={setCategory}
+        brand={brand}
+        onBrandChange={setBrand}
+        minPrice={minPrice}
+        onMinPriceChange={setMinPrice}
+        maxPrice={maxPrice}
+        onMaxPriceChange={setMaxPrice}
+        onApply={handleApplyFilters}
+        onClear={handleClearFilters}
+      />
 
       {/* Main Grid Content */}
       <main className="flex-grow space-y-6">
@@ -269,9 +230,24 @@ const Shop = () => {
           </div>
         </div>
 
+        {/* Active search indicator with clear-search */}
+        {keywordParam && (
+          <div className="flex items-center gap-2 text-sm">
+            <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-purple-50 dark:bg-purple-950/20 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-900/50 rounded-full font-medium">
+              Results for &ldquo;{keywordParam}&rdquo;
+              <button
+                onClick={handleClearSearch}
+                aria-label="Clear search"
+                className="hover:text-purple-900 dark:hover:text-purple-100 font-bold"
+              >
+                <FiX size={14} />
+              </button>
+            </span>
+          </div>
+        )}
+
         {/* Error State */}
-        {error && (
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-xl flex items-start gap-3">
+        {error && (          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-xl flex items-start gap-3">
             <FiXCircle className="mt-0.5" size={18} />
             <p className="text-sm font-medium">{error}</p>
           </div>
@@ -279,11 +255,7 @@ const Shop = () => {
 
         {/* Product Grid */}
         {loading ? (
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1, 2, 3, 4, 5, 6].map((n) => (
-              <div key={n} className="animate-pulse bg-gray-200 dark:bg-gray-800 h-80 rounded-2xl"></div>
-            ))}
-          </div>
+          <ProductGridSkeleton count={6} />
         ) : products.length === 0 && !error ? (
           <div className="text-center py-24 bg-gray-50 dark:bg-[#1f2028] rounded-3xl border border-dashed border-gray-300 dark:border-gray-800 space-y-3">
             <p className="text-gray-500 font-medium">No matches found for your filter criteria.</p>
@@ -297,38 +269,61 @@ const Shop = () => {
         ) : (
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
             {products.map((prod) => (
-              <Link
+              <ProductCard
                 key={prod._id}
-                to={`/product/${prod._id}`}
-                className="group flex flex-col bg-white dark:bg-[#1f2028] border border-gray-150 dark:border-gray-800 rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 text-left"
-              >
-                <div className="aspect-[4/5] overflow-hidden relative bg-gray-100">
-                  <img
-                    src={prod.images?.[0] || 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=600'}
-                    alt={prod.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                  {prod.stock === 0 && (
-                    <span className="absolute top-2 right-2 bg-red-600 text-white text-xxs font-bold uppercase px-2 py-1 rounded">Out Of Stock</span>
-                  )}
-                </div>
-                <div className="p-4 space-y-2 flex-grow flex flex-col justify-between">
-                  <div>
-                    <span className="text-purple-600 dark:text-purple-400 font-medium text-xs tracking-wider uppercase">{prod.brand}</span>
-                    <h3 className="font-semibold text-gray-800 dark:text-gray-200 text-sm mt-1 line-clamp-1 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
-                      {prod.name}
-                    </h3>
-                  </div>
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="text-gray-900 dark:text-white font-extrabold text-base">${prod.price?.toFixed(2)}</span>
-                    <span className="text-gray-400 text-xs">{prod.category}</span>
-                  </div>
-                </div>
-              </Link>
+                product={prod}
+                isCompared={isCompared(prod._id)}
+                onToggleCompare={handleToggleCompare}
+              />
             ))}
           </div>
         )}
       </main>
+
+      {/* Floating Comparison Bar at Bottom */}
+      {selected.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-40 w-full max-w-2xl px-4 animate-in fade-in slide-in-from-bottom duration-300">
+          <div className="bg-white/95 dark:bg-[#1f2028]/95 backdrop-blur-lg border border-purple-200 dark:border-purple-900/50 shadow-2xl rounded-3xl p-3.5 sm:p-4 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto py-1">
+              {selected.map((item) => (
+                <div key={item._id} className="relative group/thumb flex-shrink-0">
+                  <img
+                    src={resolveImageUrl(item.images?.[0])}
+                    alt={item.name}
+                    className="w-10 h-10 sm:w-12 sm:h-12 object-cover rounded-xl border border-purple-200 dark:border-purple-900"
+                  />
+                  <button
+                    onClick={() => removeProduct(item._id)}
+                    className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 shadow-md hover:bg-red-600 transition-colors"
+                    title="Remove"
+                  >
+                    <FiX size={12} />
+                  </button>
+                </div>
+              ))}
+              <span className="text-xs text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap hidden sm:inline">
+                {selected.length}/4 selected
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={clearComparison}
+                className="px-3 py-2 text-xs font-semibold text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
+              >
+                Clear
+              </button>
+              <Link
+                to="/compare"
+                className="flex items-center gap-1.5 px-4 sm:px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-2xl shadow-lg hover:shadow-purple-500/30 transition-all duration-300"
+              >
+                <FiColumns size={14} />
+                Compare Now
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
