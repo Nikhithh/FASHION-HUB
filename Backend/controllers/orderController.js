@@ -40,6 +40,9 @@ const createOrder = asyncHandler(async (req, res) => {
     items: detailed,
     shippingAddress,
     paymentMethod,
+    // Online payments are simulated as instantly settled; COD stays
+    // Pending until the order is Delivered (see updateOrderStatus).
+    paymentStatus: paymentMethod === 'Online Payment' ? 'Paid' : 'Pending',
     totalAmount: total,
   });
 
@@ -129,6 +132,14 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
   }
   if (orderStatus) order.orderStatus = orderStatus;
   if (paymentStatus) order.paymentStatus = paymentStatus;
+  
+  // COD orders are collected on delivery: marking Delivered auto-settles
+  // payment to Paid. State-based evaluation ensures it fires reliably.
+  if (order.orderStatus === 'Delivered' && order.paymentMethod === 'Cash on Delivery') {
+    if (order.paymentStatus !== 'Paid') {
+      order.paymentStatus = 'Paid';
+    }
+  }
   const updated = await order.save();
   res.status(200).json({ success: true, data: updated });
 });

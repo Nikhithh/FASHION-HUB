@@ -17,6 +17,7 @@ const {
   updateProductRules,
   updateOrderStatusRules,
   updateUserRules,
+  updateUserRoleRules,
 } = require('../validations/adminValidation');
 
 const {
@@ -25,6 +26,7 @@ const {
   getUsers,
   getUser,
   updateUser,
+  updateUserRole,
   deleteUser,
   getPendingBrands,
   approveBrand,
@@ -64,6 +66,7 @@ router.get('/dashboard', protect, authorize('admin'), adminDashboardRules, valid
 router.get('/users', protect, authorize('admin'), getUsers);
 router.get('/users/:id', protect, authorize('admin'), userIdParam, validate, getUser);
 router.put('/users/:id', protect, authorize('admin'), userIdParam, updateUserRules, validate, updateUser);
+router.put('/users/:id/role', protect, authorize('admin'), userIdParam, updateUserRoleRules, validate, updateUserRole);
 router.delete('/users/:id', protect, authorize('admin'), userIdParam, validate, deleteUser);
 
 // Brand Management

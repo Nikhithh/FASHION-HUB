@@ -19,9 +19,21 @@ const reviewIdParam = [param('id', 'Invalid review ID').isMongoId()];
 const createBrandRules = [];
 const updateBrandRules = [];
 
-// Category create / update validation
-const createCategoryRules = [];
-const updateCategoryRules = [];
+// Category create / update validation (mirrors the public validateCategory
+// rules so invalid enum values fail with 400 instead of a Mongoose 500)
+const CATEGORY_TYPES = ['Top Wear', 'Bottom Wear', 'Footwear', 'Outerwear', 'Accessories'];
+const createCategoryRules = [
+  body('name').notEmpty().withMessage('Category name is required'),
+  body('categoryType')
+    .notEmpty()
+    .withMessage('Category type is required')
+    .isIn(CATEGORY_TYPES)
+    .withMessage('Invalid category type'),
+];
+const updateCategoryRules = [
+  body('name').optional().notEmpty().withMessage('Category name is required'),
+  body('categoryType').optional().isIn(CATEGORY_TYPES).withMessage('Invalid category type'),
+];
 
 // Product create / update validation
 const createProductRules = [];
@@ -42,6 +54,15 @@ const updateUserRules = [
     .withMessage('isVerified must be a boolean'),
 ];
 
+// Dedicated role-change validation (role required, must be a known role)
+const updateUserRoleRules = [
+  body('role')
+    .notEmpty()
+    .withMessage('Role is required')
+    .isIn(['customer', 'seller', 'admin'])
+    .withMessage('Role must be either customer, seller or admin'),
+];
+
 module.exports = {
   adminDashboardRules,
   userIdParam,
@@ -58,4 +79,5 @@ module.exports = {
   updateProductRules,
   updateOrderStatusRules,
   updateUserRules,
+  updateUserRoleRules,
 };

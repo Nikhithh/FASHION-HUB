@@ -21,8 +21,10 @@ const Checkout = () => {
   const [postalCode, setPostalCode] = useState('');
   const [country, setCountry] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('Cash on Delivery');
+  const [paymentTab, setPaymentTab] = useState('card');
+  const [cardDetails, setCardDetails] = useState({ number: '', name: '', expiry: '', cvv: '' });
+  const [upiId, setUpiId] = useState('');
   const [submitting, setSubmitting] = useState(false);
-
   // Saved addresses (select one to auto-fill the form)
   const [savedAddresses, setSavedAddresses] = useState([]);
   const [selectedAddrId, setSelectedAddrId] = useState('');
@@ -91,6 +93,9 @@ const Checkout = () => {
       toast.error('Please select a supported payment method.');
       return;
     }
+    if (paymentMethod === 'Online Payment' && !validateOnlinePayment()) {
+      return;
+    }
 
     // Client-side cart validation — never send invalid data to the backend.
     const items = [];
@@ -117,7 +122,23 @@ const Checkout = () => {
     try {
       // NOTE: prices/total are intentionally omitted — the backend loads product
       // prices from MongoDB and calculates the order total securely.
-      const payload = {
+      if (paymentMethod === 'Online Payment') {
+      if (paymentTab === 'card') {
+        if (!cardDetails.number || !cardDetails.name || !cardDetails.expiry || !cardDetails.cvv) {
+          toast.error('Please fill all card details.');
+          setSubmitting(false);
+          return;
+        }
+      } else {
+        if (!upiId || !/^[a-zA-Z0-9.\-_]+@[a-zA-Z]+$/.test(upiId)) {
+          toast.error('Please enter a valid UPI ID (e.g., name@bank).');
+          setSubmitting(false);
+          return;
+        }
+      }
+    }
+
+    const payload = {
         items,
         shippingAddress: {
           address: address.trim(),
@@ -275,32 +296,148 @@ const Checkout = () => {
             </div>
 
             <div className="space-y-3">
-              {[
-                { name: 'Cash on Delivery', desc: 'Pay with cash upon package receipt' },
-                { name: 'Online Payment', desc: 'Mock credit card / debit checkout flow' },
-              ].map((opt) => (
-                <label
-                  key={opt.name}
-                  className={`flex items-start gap-4 p-4 rounded-xl border cursor-pointer transition-colors ${
-                    paymentMethod === opt.name
-                      ? 'border-purple-600 bg-purple-50/20 dark:bg-purple-950/10'
-                      : 'border-gray-200 dark:border-gray-800 hover:bg-gray-50'
-                  }`}
-                >
+              <label
+                className={`flex items-start gap-4 p-4 rounded-xl border cursor-pointer transition-colors ${
+                  paymentMethod === 'Cash on Delivery'
+                    ? 'border-purple-600 bg-purple-50/20 dark:bg-purple-950/10'
+                    : 'border-gray-200 dark:border-gray-800 hover:bg-gray-50'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="payment"
+                  value="Cash on Delivery"
+                  checked={paymentMethod === 'Cash on Delivery'}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  className="mt-1 text-purple-650 focus:ring-purple-500"
+                />
+                <div>
+                  <span className="font-semibold text-gray-900 dark:text-white text-sm">Cash on Delivery</span>
+                  <p className="text-xs text-gray-400 mt-0.5">Pay with cash upon package receipt</p>
+                </div>
+              </label>
+
+              <div
+                className={`flex flex-col p-4 rounded-xl border cursor-pointer transition-colors ${
+                  paymentMethod === 'Online Payment'
+                    ? 'border-purple-600 bg-purple-50/20 dark:bg-purple-950/10'
+                    : 'border-gray-200 dark:border-gray-800 hover:bg-gray-50'
+                }`}
+              >
+                <label className="flex items-center gap-3 cursor-pointer">
                   <input
                     type="radio"
                     name="payment"
-                    value={opt.name}
-                    checked={paymentMethod === opt.name}
+                    value="Online Payment"
+                    checked={paymentMethod === 'Online Payment'}
                     onChange={(e) => setPaymentMethod(e.target.value)}
-                    className="mt-1 text-purple-650 focus:ring-purple-500"
+                    className="text-purple-600 focus:ring-purple-500"
                   />
                   <div>
-                    <span className="font-semibold text-gray-900 dark:text-white text-sm">{opt.name}</span>
-                    <p className="text-xs text-gray-400 mt-0.5">{opt.desc}</p>
+                    <span className="block text-sm font-semibold text-gray-900 dark:text-white">Online Payment</span>
+                    <span className="block text-xs text-gray-500">Pay via Credit/Debit Card or UPI</span>
                   </div>
                 </label>
-              ))}
+                
+                {paymentMethod === 'Online Payment' && (
+                  <div className="mt-4 p-4 border border-gray-200 dark:border-gray-800 rounded-xl bg-gray-50 dark:bg-[#16171d]">
+                    {/* Tabs */}
+                    <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentTab('card')}
+                        className={`flex-1 py-2 text-sm font-medium border-b-2 transition-colors ${
+                          paymentTab === 'card' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                        }`}
+                      >
+                        Card
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPaymentTab('upi')}
+                        className={`flex-1 py-2 text-sm font-medium border-b-2 transition-colors ${
+                          paymentTab === 'upi' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                        }`}
+                      >
+                        UPI
+                      </button>
+                    </div>
+
+                    {/* Card Form */}
+                    {paymentTab === 'card' && (
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Card Number</label>
+                          <input
+                            type="text"
+                            maxLength="19"
+                            placeholder="0000 0000 0000 0000"
+                            value={cardDetails.number}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/\D/g, '').replace(/(\d{4})(?=\d)/g, '$1 ');
+                              setCardDetails({ ...cardDetails, number: val });
+                            }}
+                            className="w-full px-3 py-2 bg-white dark:bg-[#1f2028] border border-gray-300 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Cardholder Name</label>
+                          <input
+                            type="text"
+                            placeholder="John Doe"
+                            value={cardDetails.name}
+                            onChange={(e) => setCardDetails({ ...cardDetails, name: e.target.value })}
+                            className="w-full px-3 py-2 bg-white dark:bg-[#1f2028] border border-gray-300 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Expiry (MM/YY)</label>
+                            <input
+                              type="text"
+                              maxLength="5"
+                              placeholder="MM/YY"
+                              value={cardDetails.expiry}
+                              onChange={(e) => {
+                                let val = e.target.value.replace(/\D/g, '');
+                                if (val.length >= 2) val = `${val.slice(0, 2)}/${val.slice(2, 4)}`;
+                                setCardDetails({ ...cardDetails, expiry: val });
+                              }}
+                              className="w-full px-3 py-2 bg-white dark:bg-[#1f2028] border border-gray-300 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">CVV</label>
+                            <input
+                              type="password"
+                              maxLength="4"
+                              placeholder="123"
+                              value={cardDetails.cvv}
+                              onChange={(e) => setCardDetails({ ...cardDetails, cvv: e.target.value.replace(/\D/g, '') })}
+                              className="w-full px-3 py-2 bg-white dark:bg-[#1f2028] border border-gray-300 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* UPI Form */}
+                    {paymentTab === 'upi' && (
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">UPI ID</label>
+                        <input
+                          type="text"
+                          placeholder="yourname@bank"
+                          value={upiId}
+                          onChange={(e) => setUpiId(e.target.value.toLowerCase())}
+                          className="w-full px-3 py-2 bg-white dark:bg-[#1f2028] border border-gray-300 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Example: johndoe@okaxis</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

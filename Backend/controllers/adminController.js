@@ -63,12 +63,31 @@ const getUser = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: user });
 });
 
+const SUPPORTED_ROLES = ['customer', 'seller', 'admin'];
+
+// Guard: an admin must never lock themselves out by removing their own
+// admin role (via the generic update route or the dedicated role route).
+const blockSelfDemotion = (req, res, newRole) => {
+  const callerId = req.user && (req.user._id || req.user.id) ? String(req.user._id || req.user.id) : null;
+  if (callerId && String(req.params.id) === callerId && newRole && newRole !== 'admin') {
+    res.status(403);
+    throw new Error('You cannot remove your own admin access');
+  }
+};
+
 const updateUser = asyncHandler(async (req, res) => {
   const { name, email, role, isVerified } = req.body;
   const updates = {};
   if (name) updates.name = name;
   if (email) updates.email = email;
-  if (role) updates.role = role;
+  if (role) {
+    if (!SUPPORTED_ROLES.includes(role)) {
+      res.status(400);
+      throw new Error('Role must be either customer, seller or admin');
+    }
+    blockSelfDemotion(req, res, role);
+    updates.role = role;
+  }
   // Model-API parity: the User schema carries isVerified, so admins can
   // read/write it here. NOTE: nothing in the current auth/product flow
   // gates on this flag — live seller verification is enforced through
@@ -88,8 +107,31 @@ const deleteUser = asyncHandler(async (req, res) => {
     res.status(404);
     throw new Error('User not found');
   }
+  const callerId = req.user && (req.user._id || req.user.id) ? String(req.user._id || req.user.id) : null;
+  if (callerId && String(user._id || req.params.id) === callerId) {
+    res.status(403);
+    throw new Error('You cannot delete your own admin account');
+  }
   await user.deleteOne();
   res.status(200).json({ success: true, data: {} });
+});
+
+// @desc    Change a user's role (dedicated admin-only role API)
+// @route   PUT /api/admin/users/:id/role
+// @access  Private (admin)
+const updateUserRole = asyncHandler(async (req, res) => {
+  const { role } = req.body;
+  if (!role || !SUPPORTED_ROLES.includes(role)) {
+    res.status(400);
+    throw new Error('Role must be either customer, seller or admin');
+  }
+  blockSelfDemotion(req, res, role);
+  const user = await User.findByIdAndUpdate(req.params.id, { role }, { new: true, runValidators: true }).select('-password');
+  if (!user) {
+    res.status(404);
+    throw new Error('User not found');
+  }
+  res.status(200).json({ success: true, data: user });
 });
 
 // ---------- Brand Management ----------
@@ -372,6 +414,7 @@ module.exports = {
   getUsers,
   getUser,
   updateUser,
+  updateUserRole,
   deleteUser,
   // Brands
   createBrand,

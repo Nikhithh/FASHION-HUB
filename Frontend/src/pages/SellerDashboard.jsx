@@ -370,7 +370,7 @@ const SellerDashboard = () => {
 
   return (
     <div className="pb-16 text-left space-y-8">
-      <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white">Seller Dashboard</h1>
+      <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white">Brand Dashboard</h1>
 
       {/* Tabs */}
       <div className="flex border-b border-gray-250 dark:border-gray-800 gap-6">
@@ -378,7 +378,7 @@ const SellerDashboard = () => {
           { id: 'products', name: 'Products Catalog', icon: <FiGrid /> },
           { id: 'add-product', name: 'Add/Edit Product', icon: <FiPlus /> },
           { id: 'brands-categories', name: 'Brands & Categories', icon: <FiTag /> },
-          { id: 'orders', name: 'Customer Orders', icon: <FiShoppingBag /> },
+          { id: 'orders', name: 'Orders', icon: <FiShoppingBag /> },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -804,7 +804,7 @@ const SellerDashboard = () => {
               <div className="bg-white dark:bg-[#1f2028] border border-gray-150 dark:border-gray-800 rounded-3xl p-6 shadow-sm">
                 <h2 className="font-bold text-lg text-gray-950 dark:text-white uppercase tracking-wider">Brand Application</h2>
                 <p className="text-sm text-gray-500 mt-2">
-                  Your brand was submitted with your seller application. Manage its verification status and
+                  Your brand was submitted with your brand application. Manage its verification status and
                   documents in the Registered Brands list below.
                 </p>
               </div>
@@ -887,10 +887,10 @@ const SellerDashboard = () => {
         </div>
       )}
 
-      {/* Customer Orders Tab */}
+      {/* Orders Tab */}
       {activeTab === 'orders' && (
         <div className="bg-white dark:bg-[#1f2028] border border-gray-150 dark:border-gray-800 rounded-3xl p-6 shadow-sm space-y-6">
-          <h2 className="font-bold text-lg text-gray-950 dark:text-white uppercase tracking-wider">Active Customer Orders</h2>
+          <h2 className="font-bold text-lg text-gray-950 dark:text-white uppercase tracking-wider">Active Orders</h2>
           
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
@@ -898,9 +898,11 @@ const SellerDashboard = () => {
                 <tr className="border-b border-gray-200 dark:border-gray-850 text-gray-400 font-semibold uppercase tracking-wider text-xxs">
                   <th className="pb-3">Order ID</th>
                   <th className="pb-3">Customer</th>
-                  <th className="pb-3">Items Count</th>
+                  <th className="pb-3">Items</th>
                   <th className="pb-3">Price</th>
-                  <th className="pb-3">Current Status</th>
+                  <th className="pb-3">Payment Method</th>
+                  <th className="pb-3">Payment Status</th>
+                  <th className="pb-3">Order Status</th>
                   <th className="pb-3">Action</th>
                 </tr>
               </thead>
@@ -911,6 +913,20 @@ const SellerDashboard = () => {
                     <td className="py-4">{order.user?.name || 'Unknown'}</td>
                     <td className="py-4">{order.items?.length || 0}</td>
                     <td className="py-4">${order.totalAmount?.toFixed(2)}</td>
+                    <td className="py-4">
+                      <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700">
+                        {order.paymentMethod || 'N/A'}
+                      </span>
+                    </td>
+                    <td className="py-4">
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold border ${
+                        order.paymentStatus === 'Paid'
+                          ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-400 dark:border-green-900/50'
+                          : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-900/50'
+                      }`}>
+                        {order.paymentStatus || 'Pending'}
+                      </span>
+                    </td>
                     <td className="py-4">
                       <span className="px-2 py-0.5 rounded text-xs border bg-purple-50 text-purple-700 border-purple-200">
                         {order.orderStatus}

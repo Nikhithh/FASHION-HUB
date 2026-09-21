@@ -8,7 +8,13 @@ const { notFound, errorHandler } = require('./middleware/errorMiddleware');
 const app = express();
 
 // Set security HTTP headers
-app.use(helmet());
+// Use cross-origin CORP for the public static uploads so browsers on a
+// different port (Vite dev server on :5173) can load product images.
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+);
 
 // Development logging
 if (process.env.NODE_ENV === 'development') {
@@ -32,7 +38,17 @@ app.use(cookieParser());
 // Public product images only. Brand verification documents live under
 // uploads/brand-documents and are NEVER served statically — they are
 // streamed through authorized endpoints (owner seller or admin).
-app.use('/uploads/products', express.static('uploads/products')); // Serve product images static
+// Explicitly set Cross-Origin-Resource-Policy on static image responses
+// so browsers that enforce CORP (e.g. when COEP is enabled) can display
+// images served from a different origin/port.
+app.use(
+  '/uploads/products',
+  (req, res, next) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    next();
+  },
+  express.static('uploads/products')
+);
 
 // Mount Api Routes
 const authRoutes = require('./routes/authRoutes');

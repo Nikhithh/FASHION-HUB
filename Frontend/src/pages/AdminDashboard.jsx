@@ -219,9 +219,13 @@ const AdminDashboard = () => {
   };
 
   // ---------- User Actions ----------
-  const handleUpdateRole = async (userId, newRole) => {
+  const handleUpdateRole = async (userId, userName, newRole) => {
+    if (!window.confirm(`Change role of "${userName || 'this user'}" to ${newRole}?`)) {
+      loadUsers(); // revert the dropdown to the saved value
+      return;
+    }
     try {
-      const res = await api.put(`/admin/users/${userId}`, { role: newRole });
+      const res = await api.put(`/admin/users/${userId}/role`, { role: newRole });
       if (res.data && res.data.success) {
         toast.success(`User role updated to ${newRole}`);
         loadUsers();
@@ -229,6 +233,7 @@ const AdminDashboard = () => {
     } catch (err) {
       console.error('Error updating user role:', err);
       toast.error(err.response?.data?.message || 'Failed to update user role');
+      loadUsers(); // revert the dropdown on failure
     }
   };
 
@@ -704,6 +709,9 @@ const AdminDashboard = () => {
                       <tr key={u._id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
                         <td className="py-4 pr-4 font-semibold text-gray-900 dark:text-white">
                           {u.name}
+                          {u._id === (user?._id || user?.id) && (
+                            <span className="ml-2 text-xxs uppercase tracking-wider text-purple-600 dark:text-purple-400">(You)</span>
+                          )}
                         </td>
                         <td className="py-4 pr-4 text-gray-600 dark:text-gray-400">
                           {u.email}
@@ -711,7 +719,9 @@ const AdminDashboard = () => {
                         <td className="py-4 pr-4">
                           <select
                             value={u.role}
-                            onChange={(e) => handleUpdateRole(u._id, e.target.value)}
+                            disabled={u._id === (user?._id || user?.id)}
+                            title={u._id === (user?._id || user?.id) ? 'You cannot change your own role' : 'Change user role'}
+                            onChange={(e) => handleUpdateRole(u._id, u.name, e.target.value)}
                             className={`px-3 py-1 text-xs font-semibold rounded-lg border focus:outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer ${
                               u.role === 'admin'
                                 ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-900/50'

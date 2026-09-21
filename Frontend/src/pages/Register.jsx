@@ -82,7 +82,7 @@ const Register = () => {
       res = await registerSeller(formData);
       setLoading(false);
       if (res.success) {
-        toast.success(res.message || 'Your seller application has been submitted and is pending admin verification.');
+        toast.success(res.message || 'Your brand application has been submitted and is pending admin verification.');
         navigate('/login');
       } else {
         toast.error(res.error);
@@ -129,7 +129,7 @@ const Register = () => {
                     onChange={(e) => setRole(e.target.value)}
                     className="sr-only"
                   />
-                  {r}
+                  {r === 'seller' ? 'Brand' : r}
                 </label>
               ))}
             </div>
@@ -138,7 +138,7 @@ const Register = () => {
           {/* ---------- SECTION 1 — SELLER / ACCOUNT INFORMATION ---------- */}
           {role === 'seller' && (
             <h2 className="font-bold text-sm text-gray-900 dark:text-white uppercase tracking-wider pt-2">
-              Seller Information
+              Brand Owner Information
             </h2>
           )}
           <div className={`grid grid-cols-1 ${role === 'seller' ? 'sm:grid-cols-2' : ''} gap-4`}>
@@ -300,7 +300,7 @@ const Register = () => {
           >
             {loading
               ? role === 'seller' ? 'Submitting Application...' : 'Creating Account...'
-              : role === 'seller' ? 'Submit Seller Application' : 'Register'}
+              : role === 'seller' ? 'Submit Brand Application' : 'Register'}
           </button>
         </form>
 
@@ -315,7 +315,7 @@ const Register = () => {
             {role === 'seller' ? (
               <>Shopping instead? <Link to="/login" className="text-purple-600 hover:underline font-semibold">Customer Login</Link></>
             ) : (
-              <>Selling a brand? <Link to="/brand-login" className="text-teal-600 hover:underline font-semibold">Brand / Seller Login</Link></>
+              <>Selling a brand? <Link to="/brand-login" className="text-teal-600 hover:underline font-semibold">Brand Login</Link></>
             )}
           </p>
         </div>

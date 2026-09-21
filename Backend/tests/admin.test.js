@@ -162,6 +162,63 @@ describe('Admin Routes', () => {
     expect(res.body.success).toBe(true);
   });
 
+  test('PUT /api/admin/users/:id/role changes a user role', async () => {
+    const updated = { _id: OID, name: 'Bob', role: 'seller' };
+    User.findByIdAndUpdate.mockReturnValue({ select: jest.fn().mockResolvedValue(updated) });
+    const res = await request(app)
+      .put(`/api/admin/users/${OID}/role`)
+      .set(authHeader(adminToken))
+      .send({ role: 'seller' })
+      .expect(200);
+    expect(User.findByIdAndUpdate).toHaveBeenCalledWith(
+      OID,
+      { role: 'seller' },
+      { new: true, runValidators: true }
+    );
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.role).toBe('seller');
+  });
+
+  test('PUT /api/admin/users/:id/role rejects an invalid role', async () => {
+    const res = await request(app)
+      .put(`/api/admin/users/${OID}/role`)
+      .set(authHeader(adminToken))
+      .send({ role: 'superadmin' })
+      .expect(400);
+    expect(res.body.success).toBe(false);
+    expect(User.findByIdAndUpdate).not.toHaveBeenCalled();
+  });
+
+  test('PUT /api/admin/users/:id/role rejects a missing role', async () => {
+    const res = await request(app)
+      .put(`/api/admin/users/${OID}/role`)
+      .set(authHeader(adminToken))
+      .send({})
+      .expect(400);
+    expect(res.body.success).toBe(false);
+    expect(User.findByIdAndUpdate).not.toHaveBeenCalled();
+  });
+
+  test('PUT /api/admin/users/:id/role forbids non-admin callers', async () => {
+    const res = await request(app)
+      .put(`/api/admin/users/${OID}/role`)
+      .set(authHeader(customerToken))
+      .send({ role: 'seller' })
+      .expect(403);
+    expect(res.body.success).toBe(false);
+    expect(User.findByIdAndUpdate).not.toHaveBeenCalled();
+  });
+
+  test('PUT /api/admin/users/:id/role returns 404 for unknown user', async () => {
+    User.findByIdAndUpdate.mockReturnValue({ select: jest.fn().mockResolvedValue(null) });
+    const res = await request(app)
+      .put(`/api/admin/users/${OID}/role`)
+      .set(authHeader(adminToken))
+      .send({ role: 'customer' })
+      .expect(404);
+    expect(res.body.success).toBe(false);
+  });
+
   // ------------------- Brands Management -------------------
   test('POST /api/admin/brands creates a brand', async () => {
     const payload = { name: 'NewBrand' };

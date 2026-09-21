@@ -13,8 +13,8 @@ import { landingFor, loginPageFor } from '../utils/roleLanding';
 // surfaced verbatim. Only role === 'seller' proceeds to /seller.
 const BrandLogin = () => {
   usePageMeta({
-    title: 'Brand / Seller Login | FashionHub',
-    description: 'Approved FashionHub brand sellers log in here to manage products and orders.',
+    title: 'Brand Login | FashionHub',
+    description: 'Approved FashionHub brands log in here to manage products and orders.',
   });
   const { login, logout, user } = useAuth();
   const navigate = useNavigate();
@@ -37,26 +37,26 @@ const BrandLogin = () => {
       await logout();
       toast.error(
         res.user?.role === 'admin'
-          ? 'Seller area is for brand accounts. Please use the Admin login.'
-          : 'This login is for brand sellers. Please use the customer login.'
+          ? 'Brand area is for brand accounts. Please use the Admin login.'
+          : 'This login is for brands. Please use the customer login.'
       );
       navigate(correct);
       return;
     }
-    toast.success('Welcome back, seller!');
+    toast.success('Welcome back!');
     navigate('/seller');
   };
 
   return (
     <RoleLoginForm
-      heading="Brand / Seller Login"
-      subheading="Manage your brand, products and seller orders"
+      heading="Brand Login"
+      subheading="Manage your brand, products and orders"
       icon={<FiTag />}
       accent="teal"
       loading={loading}
       onSubmit={handleSubmit}
       registerLink="/register"
-      registerLabel="New brand? Apply as a seller"
+      registerLabel="New brand? Register here"
       altLogins={[
         { to: '/login', label: 'Customer Login' },
         { to: '/admin-login', label: 'Admin Login' },

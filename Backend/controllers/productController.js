@@ -87,7 +87,13 @@ const createProduct = asyncHandler(async (req, res) => {
     if (!brandId) {
       return res.status(400).json({ success: false, message: 'Brand is required' });
     }
-    let brand = await Brand.findById(brandId);
+    // Brand may arrive as an ObjectId or a plain name string — only call
+    // findById with valid ObjectIds (otherwise Mongoose throws CastError
+    // and the request fails with 500 instead of a clean 4xx).
+    let brand = null;
+    if (mongoose.Types.ObjectId.isValid(brandId)) {
+      brand = await Brand.findById(brandId);
+    }
     if (!brand) {
       brand = await Brand.findOne({ name: brandId });
     }
@@ -138,7 +144,10 @@ const updateProduct = asyncHandler(async (req, res) => {
 
     const brandIdToCheck = req.body.brand || product.brand;
     if (brandIdToCheck) {
-      let brand = await Brand.findById(brandIdToCheck);
+      let brand = null;
+      if (mongoose.Types.ObjectId.isValid(brandIdToCheck)) {
+        brand = await Brand.findById(brandIdToCheck);
+      }
       if (!brand) {
         brand = await Brand.findOne({ name: brandIdToCheck });
       }

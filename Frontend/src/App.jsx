@@ -138,7 +138,14 @@ function App() {
                     }
                   />
                   <Route path="/product/:id" element={<ProductDetails />} />
-                  <Route path="/cart" element={<Cart />} />
+                  <Route
+                    path="/cart"
+                    element={
+                      <ProtectedRoute roles={['customer']} loginPath="/login">
+                        <Cart />
+                      </ProtectedRoute>
+                    }
+                  />
                   <Route path="/compare" element={<Compare />} />
                   <Route path="/login" element={<Login />} />
                   <Route path="/brand-login" element={<BrandLogin />} />

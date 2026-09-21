@@ -38,7 +38,7 @@ const Login = () => {
       await logout();
       toast.error(
         res.user?.role === 'seller'
-          ? 'This is the customer login. Please use the Brand / Seller login.'
+          ? 'This is the customer login. Please use the Brand Login.'
           : 'This is the customer login. Please use the Admin login.'
       );
       navigate(correct);
@@ -58,7 +58,7 @@ const Login = () => {
       onSubmit={handleSubmit}
       registerLink="/register"
       altLogins={[
-        { to: '/brand-login', label: 'Brand / Seller Login' },
+        { to: '/brand-login', label: 'Brand Login' },
         { to: '/admin-login', label: 'Admin Login' },
       ]}
     />

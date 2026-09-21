@@ -6,19 +6,46 @@ import api from '../../services/api';
 import { FiShoppingBag, FiUser, FiLogOut, FiMenu, FiX, FiActivity, FiSearch, FiHeart } from 'react-icons/fi';
 import { useWishlist } from '../../context/WishlistContext';
 
-const SUGGEST_LIMIT = 5;
+const PRODUCT_SUGGEST_LIMIT = 5;
+const BRAND_SUGGEST_LIMIT = 3;
+const CATEGORY_SUGGEST_LIMIT = 3;
 
-// Reusable search box with lightweight autocomplete backed by the existing
+// Reusable search box with grouped autocomplete: brands + categories
+// (pre-loaded once, filtered client-side) plus products from the existing
 // GET /products/search?keyword= endpoint (no new search engine).
 const SearchBox = ({ autoFocus, onNavigate, className }) => {
   const navigate = useNavigate();
   const [value, setValue] = useState('');
-  const [suggestions, setSuggestions] = useState([]);
+  const [suggestions, setSuggestions] = useState({ products: [], brands: [], categories: [] });
   const [open, setOpen] = useState(false);
   const timer = useRef(null);
   const boxRef = useRef(null);
+  const brandsRef = useRef([]);
+  const categoriesRef = useRef([]);
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  // Pre-load brands and categories once on mount (stored in refs, no re-renders).
+  useEffect(() => {
+    let cancelled = false;
+    const preload = async () => {
+      try {
+        const [brandRes, catRes] = await Promise.all([
+          api.get('/brands'),
+          api.get('/categories'),
+        ]);
+        if (cancelled) return;
+        const brands = (brandRes.data && (brandRes.data.data || brandRes.data.brands)) || [];
+        const cats = (catRes.data && (catRes.data.data || catRes.data.categories)) || [];
+        brandsRef.current = Array.isArray(brands) ? brands : [];
+        categoriesRef.current = Array.isArray(cats) ? cats : [];
+      } catch {
+        // Search still works with products-only if metadata fails to load.
+      }
+    };
+    preload();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     const onClickOutside = (e) => {
@@ -32,39 +59,57 @@ const SearchBox = ({ autoFocus, onNavigate, className }) => {
     if (timer.current) clearTimeout(timer.current);
     const query = q.trim();
     if (query.length < 2) {
-      setSuggestions([]);
+      setSuggestions({ products: [], brands: [], categories: [] });
       setOpen(false);
       return;
     }
+
+    // Client-side filter of pre-loaded brands and categories (max 3 each).
+    const qLower = query.toLowerCase();
+    const matchedBrands = brandsRef.current
+      .filter((b) => ((b && b.name) || '').toLowerCase().includes(qLower))
+      .slice(0, BRAND_SUGGEST_LIMIT);
+    const matchedCategories = categoriesRef.current
+      .filter((c) => ((c && c.name) || '').toLowerCase().includes(qLower))
+      .slice(0, CATEGORY_SUGGEST_LIMIT);
+
     timer.current = setTimeout(async () => {
       try {
         const res = await api.get('/products/search', { params: { keyword: query } });
         const items = (res.data && res.data.data) || [];
-        setSuggestions(items.slice(0, SUGGEST_LIMIT));
+        setSuggestions({
+          products: items.slice(0, PRODUCT_SUGGEST_LIMIT),
+          brands: matchedBrands,
+          categories: matchedCategories,
+        });
         setOpen(true);
       } catch {
-        setSuggestions([]);
-        setOpen(false);
+        setSuggestions({ products: [], brands: matchedBrands, categories: matchedCategories });
+        setOpen(true);
       }
     }, 300);
   };
 
-  const goToShop = (keyword) => {
-    const q = (keyword ?? value).trim();
+  const goToShop = (param, val) => {
     setOpen(false);
-    setSuggestions([]);
+    setSuggestions({ products: [], brands: [], categories: [] });
     if (onNavigate) onNavigate();
-    if (!q) {
-      navigate('/shop');
+    
+    if (param === 'keyword') {
+      const q = (val ?? value).trim();
+      if (!q) navigate('/shop');
+      else navigate(`/shop?keyword=${encodeURIComponent(q)}`);
     } else {
-      navigate(`/shop?keyword=${encodeURIComponent(q)}`);
+      navigate(`/shop?${param}=${encodeURIComponent(val)}`);
     }
   };
+
+  const hasSuggestions = suggestions.products.length > 0 || suggestions.brands.length > 0 || suggestions.categories.length > 0;
 
   return (
     <div ref={boxRef} className={`relative ${className || ''}`}>
       <form
-        onSubmit={(e) => { e.preventDefault(); goToShop(); }}
+        onSubmit={(e) => { e.preventDefault(); goToShop('keyword'); }}
         className="relative"
         role="search"
       >
@@ -73,29 +118,56 @@ const SearchBox = ({ autoFocus, onNavigate, className }) => {
           value={value}
           autoFocus={autoFocus}
           onChange={(e) => { setValue(e.target.value); fetchSuggestions(e.target.value); }}
-          onFocus={() => { if (suggestions.length > 0) setOpen(true); }}
+          onFocus={() => { if (hasSuggestions) setOpen(true); }}
           onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false); }}
-          placeholder="Search products..."
-          aria-label="Search products"
+          placeholder="Search products, brands, categories..."
+          aria-label="Search products, brands, categories"
           className="w-full px-4 py-2 pl-10 bg-gray-100 dark:bg-gray-800 border border-transparent focus:border-purple-500 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
         />
         <FiSearch className="absolute left-3 top-3 text-gray-400" size={16} />
       </form>
-      {open && suggestions.length > 0 && (
-        <ul className="absolute left-0 right-0 mt-1 rounded-xl shadow-xl bg-white dark:bg-[#1f2028] border border-gray-200 dark:border-gray-800 py-1 z-50 overflow-hidden">
-          {suggestions.map((p) => (
-            <li key={p._id}>
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => { setValue(p.name); goToShop(p.name); }}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-purple-50 dark:hover:bg-purple-950/20 truncate"
-              >
-                {p.name}
-              </button>
-            </li>
-          ))}
-        </ul>
+      
+      {open && hasSuggestions && (
+        <div className="absolute left-0 right-0 mt-1 rounded-xl shadow-xl bg-white dark:bg-[#1f2028] border border-gray-200 dark:border-gray-800 py-1 z-50 overflow-hidden max-h-96 overflow-y-auto">
+          {suggestions.brands.length > 0 && (
+            <div className="mb-1">
+              <div className="px-4 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-gray-800/50">Brands</div>
+              <ul>
+                {suggestions.brands.map(b => (
+                  <li key={b._id}>
+                    <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { setValue(b.name); goToShop('brand', b.name); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-purple-50 dark:hover:bg-purple-950/20 truncate flex items-center gap-2"><span className="text-purple-600">🏷️</span> {b.name}</button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          
+          {suggestions.categories.length > 0 && (
+            <div className="mb-1">
+              <div className="px-4 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-gray-800/50">Categories</div>
+              <ul>
+                {suggestions.categories.map(c => (
+                  <li key={c._id}>
+                    <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { setValue(c.name); goToShop('category', c.name); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-purple-50 dark:hover:bg-purple-950/20 truncate flex items-center gap-2"><span className="text-purple-600">📂</span> {c.name}</button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          
+          {suggestions.products.length > 0 && (
+            <div>
+              <div className="px-4 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50 dark:bg-gray-800/50">Products</div>
+              <ul>
+                {suggestions.products.map(p => (
+                  <li key={p._id}>
+                    <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { setValue(p.name); goToShop('keyword', p.name); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-purple-50 dark:hover:bg-purple-950/20 truncate flex items-center gap-2"><span className="text-purple-600">📦</span> {p.name}</button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -145,11 +217,8 @@ const Navbar = () => {
             {user?.role === 'seller' && (
               <Link to="/seller" className="text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 font-medium flex items-center gap-1">
                 <FiActivity size={16} />
-                Seller Dashboard
+                Brand Dashboard
               </Link>
-            )}
-            {user?.role === 'seller' && (
-              <Link to="/seller" className="text-gray-700 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 font-medium transition-colors">Seller Orders</Link>
             )}
             {user?.role === 'admin' && (
               <Link to="/admin" className="text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 font-medium flex items-center gap-1">
@@ -175,15 +244,17 @@ const Navbar = () => {
               </Link>
             )}
 
-            {/* Cart Link */}
-            <Link to="/cart" className="relative p-2 text-gray-700 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
-              <FiShoppingBag size={22} />
-              {cartCount > 0 && (
-                <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-purple-600 rounded-full transform translate-x-1/3 -translate-y-1/3 shadow-sm animate-pulse">
-                  {cartCount}
-                </span>
-              )}
-            </Link>
+            {/* Cart Link (customer only or guest) */}
+            {(!user || user.role === 'customer') && (
+              <Link to="/cart" aria-label="Shopping cart" className="relative p-2 text-gray-700 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
+                <FiShoppingBag size={22} />
+                {cartCount > 0 && (
+                  <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-purple-600 rounded-full transform translate-x-1/3 -translate-y-1/3 shadow-sm animate-pulse">
+                    {cartCount}
+                  </span>
+                )}
+              </Link>
+            )}
 
             {/* Profile Dropdown */}
             {user ? (
@@ -322,16 +393,7 @@ const Navbar = () => {
                 onClick={() => setIsOpen(false)}
                 className="block px-3 py-2 rounded-xl text-base font-medium text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/20"
               >
-                Seller Dashboard
-              </Link>
-            )}
-            {user?.role === 'seller' && (
-              <Link
-                to="/seller"
-                onClick={() => setIsOpen(false)}
-                className="block px-3 py-2 rounded-xl text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-purple-50 dark:hover:bg-purple-950/20 hover:text-purple-600 dark:hover:text-purple-400"
-              >
-                Seller Orders
+                Brand Dashboard
               </Link>
             )}
             {user?.role === 'admin' && (
@@ -357,7 +419,7 @@ const Navbar = () => {
                   onClick={() => setIsOpen(false)}
                   className="w-full text-center py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-teal-600"
                 >
-                  Brand / Seller Login
+                  Brand Login
                 </Link>
                 <Link
                   to="/admin-login"

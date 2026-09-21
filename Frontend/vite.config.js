@@ -8,4 +8,15 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  server: {
+    proxy: {
+      // Proxy /uploads to the Express backend so images are served from
+      // the same origin as the Vite dev server — avoids CORP/CORS issues.
+      '/uploads': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
+  },
 })
