@@ -1,6 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const Review = require('../models/Review');
 const Product = require('../models/Product');
+const { createNotification } = require('../services/notificationService');
 
 /**
  * Recalculate Product.rating and Product.numReviews from actual Review documents
@@ -65,6 +66,15 @@ const addReview = asyncHandler(async (req, res) => {
 
   // Recalculate product rating & numReviews
   await updateProductRating(productId);
+
+  await createNotification({
+    userId,
+    type: 'REVIEW_SUBMITTED',
+    title: 'Review Submitted',
+    message: `Your review for ${product.name} has been submitted successfully.`,
+    relatedId: product._id,
+    relatedType: 'Product',
+  });
 
   res.status(201).json({ success: true, data: review });
 });

@@ -5,6 +5,7 @@ const Category = require('../models/Category');
 const Product = require('../models/Product');
 const Order = require('../models/Order');
 const Review = require('../models/Review');
+const { createNotification } = require('../services/notificationService');
 
 // @desc    Admin dashboard statistics
 // @route   GET /api/admin/dashboard
@@ -211,6 +212,16 @@ const approveBrand = asyncHandler(async (req, res) => {
     brand.adminVerificationNote = req.body.adminVerificationNote;
   }
   await brand.save();
+  if (brand.seller) {
+    await createNotification({
+      userId: brand.seller,
+      type: 'BRAND_APPROVED',
+      title: 'Brand Application Approved',
+      message: 'Your brand application has been approved. You can now access your Brand Dashboard.',
+      relatedId: brand._id,
+      relatedType: 'Brand',
+    });
+  }
   res.status(200).json({ success: true, data: brand });
 });
 
@@ -238,6 +249,16 @@ const rejectBrand = asyncHandler(async (req, res) => {
     brand.adminVerificationNote = brand.rejectionReason;
   }
   await brand.save();
+  if (brand.seller) {
+    await createNotification({
+      userId: brand.seller,
+      type: 'BRAND_REJECTED',
+      title: 'Brand Application Rejected',
+      message: `Your brand application has been rejected. Reason: ${brand.rejectionReason}`,
+      relatedId: brand._id,
+      relatedType: 'Brand',
+    });
+  }
   res.status(200).json({ success: true, data: brand });
 });
 
@@ -375,6 +396,23 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
   if (next) order.orderStatus = next;
   if (paymentStatus) order.paymentStatus = paymentStatus;
   await order.save();
+  const statusNotifications = {
+    Processing: { type: 'ORDER_PROCESSING', title: 'Order Processing', message: `Your order #${String(order._id).slice(-6).toUpperCase()} is being processed.` },
+    Shipped: { type: 'ORDER_SHIPPED', title: 'Order Shipped', message: `Your order #${String(order._id).slice(-6).toUpperCase()} has been shipped.` },
+    Delivered: { type: 'ORDER_DELIVERED', title: 'Order Delivered', message: `Your order #${String(order._id).slice(-6).toUpperCase()} has been delivered.` },
+    Cancelled: { type: 'ORDER_CANCELLED', title: 'Order Cancelled', message: `Your order #${String(order._id).slice(-6).toUpperCase()} has been cancelled.` },
+  };
+  if (next && statusNotifications[next]) {
+    const note = statusNotifications[next];
+    await createNotification({
+      userId: order.user,
+      type: note.type,
+      title: note.title,
+      message: note.message,
+      relatedId: order._id,
+      relatedType: 'Order',
+    });
+  }
   res.status(200).json({ success: true, data: order });
 });
 

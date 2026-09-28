@@ -3,8 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import api from '../../services/api';
-import { FiShoppingBag, FiUser, FiLogOut, FiMenu, FiX, FiActivity, FiSearch, FiHeart } from 'react-icons/fi';
+import { FiShoppingBag, FiUser, FiLogOut, FiMenu, FiX, FiActivity, FiSearch, FiHeart, FiBell } from 'react-icons/fi';
 import { useWishlist } from '../../context/WishlistContext';
+import { useNotifications } from '../../context/NotificationContext';
 
 const PRODUCT_SUGGEST_LIMIT = 5;
 const BRAND_SUGGEST_LIMIT = 3;
@@ -182,6 +183,7 @@ const Navbar = () => {
 
   const cartCount = cartItems.reduce((count, item) => count + item.quantity, 0);
   const { wishlist } = useWishlist();
+  const { unreadCount } = useNotifications();
 
   const handleLogout = async () => {
     await logout();
@@ -239,6 +241,18 @@ const Navbar = () => {
                 {wishlist.length > 0 && (
                   <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-purple-600 rounded-full transform translate-x-1/3 -translate-y-1/3 shadow-sm">
                     {wishlist.length}
+                  </span>
+                )}
+              </Link>
+            )}
+
+            {/* Notification bell (authenticated users) */}
+            {user && (
+              <Link to="/notifications" aria-label="Notifications" className="relative p-2 text-gray-700 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
+                <FiBell size={22} />
+                {unreadCount > 0 && (
+                  <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-red-600 rounded-full transform translate-x-1/3 -translate-y-1/3 shadow-sm">
+                    {unreadCount}
                   </span>
                 )}
               </Link>
@@ -385,6 +399,20 @@ const Navbar = () => {
                 className="block px-3 py-2 rounded-xl text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-purple-50 dark:hover:bg-purple-950/20 hover:text-purple-600 dark:hover:text-purple-400"
               >
                 My Profile
+              </Link>
+            )}
+            {user && (
+              <Link
+                to="/notifications"
+                onClick={() => setIsOpen(false)}
+                className="block px-3 py-2 rounded-xl text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-purple-50 dark:hover:bg-purple-950/20 hover:text-purple-600 dark:hover:text-purple-400"
+              >
+                Notifications
+                {unreadCount > 0 && (
+                  <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold leading-none text-white bg-red-600 rounded-full">
+                    {unreadCount}
+                  </span>
+                )}
               </Link>
             )}
             {user?.role === 'seller' && (

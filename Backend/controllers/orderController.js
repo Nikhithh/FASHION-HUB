@@ -2,6 +2,7 @@ const asyncHandler = require('express-async-handler');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const Cart = require('../models/Cart');
+const { createNotification, notifyAdmins, notifySellersForProducts } = require('../services/notificationService');
 
 /** Helper: calculate price, subtotal, total (carries selected size/color through) */
 const calculateItems = async (items) => {
@@ -55,6 +56,32 @@ const createOrder = asyncHandler(async (req, res) => {
 
   // Clear cart
   await Cart.findOneAndDelete({ user: req.user._id });
+
+  const shortId = String(createdOrder._id).slice(-6).toUpperCase();
+  const productIds = detailed.map((i) => i.product);
+  await createNotification({
+    userId: req.user._id,
+    type: 'ORDER_PLACED',
+    title: 'Order Placed',
+    message: `Your order #${shortId} has been placed successfully.`,
+    relatedId: createdOrder._id,
+    relatedType: 'Order',
+  });
+  await notifySellersForProducts(productIds, {
+    type: 'NEW_ORDER',
+    title: 'New Order Received',
+    message: `You received a new order #${shortId} containing your product.`,
+    relatedId: createdOrder._id,
+    relatedType: 'Order',
+    excludeUserId: req.user._id,
+  });
+  await notifyAdmins({
+    type: 'NEW_ORDER',
+    title: 'New Order',
+    message: `A new order #${shortId} has been placed.`,
+    relatedId: createdOrder._id,
+    relatedType: 'Order',
+  });
 
   res.status(201).json({ success: true, data: createdOrder });
 });
@@ -132,7 +159,6 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
   }
   if (orderStatus) order.orderStatus = orderStatus;
   if (paymentStatus) order.paymentStatus = paymentStatus;
-  
   // COD orders are collected on delivery: marking Delivered auto-settles
   // payment to Paid. State-based evaluation ensures it fires reliably.
   if (order.orderStatus === 'Delivered' && order.paymentMethod === 'Cash on Delivery') {
@@ -141,6 +167,45 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
     }
   }
   const updated = await order.save();
+
+  // Notify the customer when the order status changes (existing statuses only)
+  const statusNotifications = {
+    Processing: { type: 'ORDER_PROCESSING', title: 'Order Processing', message: `Your order #${String(updated._id).slice(-6).toUpperCase()} is being processed.` },
+    Shipped: { type: 'ORDER_SHIPPED', title: 'Order Shipped', message: `Your order #${String(updated._id).slice(-6).toUpperCase()} has been shipped.` },
+    Delivered: { type: 'ORDER_DELIVERED', title: 'Order Delivered', message: `Your order #${String(updated._id).slice(-6).toUpperCase()} has been delivered.` },
+    Cancelled: { type: 'ORDER_CANCELLED', title: 'Order Cancelled', message: `Your order #${String(updated._id).slice(-6).toUpperCase()} has been cancelled.` },
+  };
+  if (orderStatus && statusNotifications[orderStatus]) {
+    const note = statusNotifications[orderStatus];
+    await createNotification({
+      userId: updated.user,
+      type: note.type,
+      title: note.title,
+      message: note.message,
+      relatedId: updated._id,
+      relatedType: 'Order',
+    });
+  }
+  // Sellers + admins only care about cancellations here (avoid noise)
+  if (orderStatus === 'Cancelled') {
+    const productIds = updated.items.map((i) => (i.product && i.product._id ? i.product._id : i.product));
+    await notifySellersForProducts(productIds, {
+      type: 'ORDER_CANCELLED',
+      title: 'Order Cancelled',
+      message: `Order #${String(updated._id).slice(-6).toUpperCase()} containing your product has been cancelled.`,
+      relatedId: updated._id,
+      relatedType: 'Order',
+      excludeUserId: updated.user,
+    });
+    await notifyAdmins({
+      type: 'IMPORTANT_ORDER_UPDATE',
+      title: 'Order Cancelled',
+      message: `Order #${String(updated._id).slice(-6).toUpperCase()} has been cancelled.`,
+      relatedId: updated._id,
+      relatedType: 'Order',
+    });
+  }
+
   res.status(200).json({ success: true, data: updated });
 });
 
@@ -171,6 +236,31 @@ const cancelOrder = asyncHandler(async (req, res) => {
       await Product.findByIdAndUpdate(item.product, { $inc: { stock: item.quantity } });
     }
   }
+
+  const shortId = String(order._id).slice(-6).toUpperCase();
+  await createNotification({
+    userId: order.user,
+    type: 'ORDER_CANCELLED',
+    title: 'Order Cancelled',
+    message: `Your order #${shortId} has been cancelled.`,
+    relatedId: order._id,
+    relatedType: 'Order',
+  });
+  await notifySellersForProducts(order.items.map((i) => i.product), {
+    type: 'ORDER_CANCELLED',
+    title: 'Order Cancelled',
+    message: `Order #${shortId} containing your product has been cancelled.`,
+    relatedId: order._id,
+    relatedType: 'Order',
+    excludeUserId: order.user,
+  });
+  await notifyAdmins({
+    type: 'IMPORTANT_ORDER_UPDATE',
+    title: 'Order Cancelled',
+    message: `Order #${shortId} has been cancelled.`,
+    relatedId: order._id,
+    relatedType: 'Order',
+  });
 
   res.status(200).json({ success: true, data: order });
 });

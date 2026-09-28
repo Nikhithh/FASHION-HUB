@@ -1,6 +1,7 @@
 const Payment = require('../models/Payment');
 const Order = require('../models/Order');
 const asyncHandler = require('express-async-handler');
+const { createNotification } = require('../services/notificationService');
 
 // @desc    Create dummy payment for an order
 // @route   POST /api/payments
@@ -44,6 +45,16 @@ const createPayment = asyncHandler(async (req, res) => {
   // Update order payment status
   order.paymentStatus = 'Paid';
   await order.save();
+
+  const shortId = String(order._id).slice(-6).toUpperCase();
+  await createNotification({
+    userId: order.user,
+    type: 'PAYMENT_SUCCESS',
+    title: 'Payment Successful',
+    message: `Payment for order #${shortId} was completed successfully.`,
+    relatedId: order._id,
+    relatedType: 'Order',
+  });
 
   res.status(201).json({ payment, order });
 });

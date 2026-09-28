@@ -154,6 +154,18 @@ const registerSellerWithBrand = async (userData, brandData, file) => {
 
     const userObj = user.toObject();
     delete userObj.password;
+    try {
+      const { notifyAdmins } = require('./notificationService');
+      await notifyAdmins({
+        type: 'NEW_BRAND_APPLICATION',
+        title: 'New Brand Application',
+        message: `A new brand application "${brand.name}" is waiting for verification.`,
+        relatedId: brand._id,
+        relatedType: 'Brand',
+      });
+    } catch (err) {
+      // Notifications must never break seller registration
+    }
     return { user: userObj, brand };
   } catch (brandError) {
     // Roll back the orphaned seller account so a failed application

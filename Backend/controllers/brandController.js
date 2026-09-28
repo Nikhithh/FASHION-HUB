@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const Brand = require('../models/Brand');
 const { brandDocDir } = require('../middleware/upload');
+const { notifyAdmins } = require('../services/notificationService');
 
 // @desc    Get all brands
 // @route   GET /api/brands
@@ -71,6 +72,13 @@ const createBrand = asyncHandler(async (req, res) => {
     attachVerificationDoc(req.body, req.file);
   }
   const brand = await Brand.create(req.body);
+  await notifyAdmins({
+    type: 'NEW_BRAND_APPLICATION',
+    title: 'New Brand Application',
+    message: `A new brand application "${brand.name}" is waiting for verification.`,
+    relatedId: brand._id,
+    relatedType: 'Brand',
+  });
   res.status(201).json({ success: true, data: brand });
 });
 

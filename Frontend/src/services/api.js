@@ -18,3 +18,15 @@ api.interceptors.request.use(
 );
 
 export default api;
+
+// Notification API (uses the shared Axios client above — same baseURL,
+// credentials, and Authorization header injection).
+export const getNotifications = () => api.get('/notifications');
+
+export const getUnreadNotificationCount = () => api.get('/notifications/unread-count');
+
+export const markNotificationAsRead = (id) => api.patch(`/notifications/${id}/read`);
+
+export const markAllNotificationsAsRead = () => api.patch('/notifications/read-all');
+
+export const deleteNotification = (id) => api.delete(`/notifications/${id}`);

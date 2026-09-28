@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
 import { WishlistProvider } from './context/WishlistContext';
+import { NotificationProvider } from './context/NotificationContext';
 import Navbar from './components/Layout/Navbar';
 import Footer from './components/Layout/Footer';
 import Home from './pages/Home';
@@ -23,6 +24,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import Compare from './pages/Compare';
 import Profile from './pages/Profile';
 import Wishlist from './pages/Wishlist';
+import Notifications from './pages/Notifications';
 import OutfitRecommendation from './pages/OutfitRecommendation';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
@@ -120,6 +122,7 @@ function App() {
     <AuthProvider>
       <CartProvider>
         <WishlistProvider>
+        <NotificationProvider>
         <ComparisonProvider>
           <BrowserRouter>
             <div className="flex flex-col min-h-screen">
@@ -195,6 +198,14 @@ function App() {
                       </ProtectedRoute>
                     }
                   />
+                  <Route
+                    path="/notifications"
+                    element={
+                      <ProtectedRoute>
+                        <Notifications />
+                      </ProtectedRoute>
+                    }
+                  />
 
                   {/* Protected Seller / Admin Routes */}
                   {/* /seller is seller-only (admins use /admin) */}
@@ -224,6 +235,7 @@ function App() {
             <ToastContainer position="bottom-right" autoClose={3000} theme="colored" />
             </BrowserRouter>
         </ComparisonProvider>
+        </NotificationProvider>
         </WishlistProvider>
       </CartProvider>
       </AuthProvider >
